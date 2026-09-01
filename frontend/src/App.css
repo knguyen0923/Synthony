@@ -219,4 +219,26 @@
     border-radius: 0;
     padding: 0;
   }
+
+  /* ScoreViewer switches OSMD to a paginated layout (Letter portrait) right
+     before printing (see ScoreViewer.tsx's beforeprint handler), which makes
+     OSMD render one container per physical page instead of one continuous
+     flow. Break between them at the same boundary OSMD already chose,
+     instead of letting the browser cut through a staff system wherever the
+     page happens to end. */
+  [class*="osmdCanvasPage"] {
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  [class*="osmdCanvasPage"]:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
 }

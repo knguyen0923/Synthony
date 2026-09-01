@@ -65,6 +65,35 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    // OSMD's on-screen layout ("Endless") is one continuous flow with no
+    // internal page boundaries, so browser printing has to slice it wherever
+    // the physical page ends — often mid-staff. Switching to a real paginated
+    // layout only for the print action lets OSMD lay out proper page breaks
+    // that respect whole systems; switch back afterward for the continuous
+    // on-screen view. Covers both the Print button (window.print()) and the
+    // browser's native print shortcut (Cmd/Ctrl+P), since both fire these
+    // events.
+    function handleBeforePrint() {
+      const osmd = osmdRef.current;
+      if (!osmd) return;
+      osmd.setPageFormat("Letter_P");
+      osmd.render();
+    }
+    function handleAfterPrint() {
+      const osmd = osmdRef.current;
+      if (!osmd) return;
+      osmd.setPageFormat("Endless");
+      osmd.render();
+    }
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, []);
+
   function applyZoom(next: number) {
     const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
     zoomRef.current = clamped;
