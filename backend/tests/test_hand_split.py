@@ -27,10 +27,12 @@ def test_grand_staff_has_braced_part_group_in_exported_musicxml():
     assert "<group-symbol>brace</group-symbol>" in xml
 
 
-def test_grand_staff_parts_are_named_in_exported_musicxml():
+def test_grand_staff_parts_are_named_but_not_printed_in_exported_musicxml():
     """Without an explicit part name, music21 exports an empty <part-name>,
     which viewers render as the internal id (an opaque hex string) instead
-    of a human-readable instrument label."""
+    of a human-readable instrument label — but a single piano's RH/LH
+    staves shouldn't have a printed label at all, so the name is kept
+    internally with print-object="no"."""
     notes = [
         NoteEvent(start=0.0, end=0.5, pitch=60),
         NoteEvent(start=0.0, end=0.5, pitch=48),
@@ -42,8 +44,8 @@ def test_grand_staff_parts_are_named_in_exported_musicxml():
         export_musicxml(score, output_path)
         xml = output_path.read_text()
 
-    assert "<part-name>Right Hand</part-name>" in xml
-    assert "<part-name>Left Hand</part-name>" in xml
+    assert '<part-name print-object="no">Right Hand</part-name>' in xml
+    assert '<part-name print-object="no">Left Hand</part-name>' in xml
 
 
 def test_grand_staff_title_is_set_in_exported_musicxml():

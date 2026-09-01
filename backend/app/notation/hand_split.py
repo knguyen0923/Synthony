@@ -100,8 +100,14 @@ def build_grand_staff_score(
     the Score's title — without these, music21 exports an empty
     <part-name> (rendered by viewers as the internal id, an opaque hex
     string) and a placeholder "Music21 Fragment" title."""
+    # Kept internally (non-empty <part-name>, needed to avoid viewers
+    # falling back to the opaque internal part id) but not printed — a
+    # single piano's two staves don't need a label in real engraved scores,
+    # there's no ambiguity about which hand plays which staff.
     rh.partName = "Right Hand"
+    rh.style.printPartName = False
     lh.partName = "Left Hand"
+    lh.style.printPartName = False
 
     _apply_dynamic_clef_changes(
         rh, clef.TrebleClef, clef.BassClef,

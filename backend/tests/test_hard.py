@@ -60,6 +60,6 @@ def test_hard_output_has_part_names_and_title_in_exported_musicxml():
         export_musicxml(hard_score, output_path)
         xml = output_path.read_text()
 
-    assert "<part-name>Right Hand</part-name>" in xml
-    assert "<part-name>Left Hand</part-name>" in xml
+    assert '<part-name print-object="no">Right Hand</part-name>' in xml
+    assert '<part-name print-object="no">Left Hand</part-name>' in xml
     assert "<work-title>Clair de Lune</work-title>" in xml

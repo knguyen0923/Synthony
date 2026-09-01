@@ -33,11 +33,13 @@ def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_pi
         xml = musicxml_path.read_text()
         # Real title/part-name threading, not music21's defaults — a viewer
         # would otherwise show "Music21 Fragment" and an opaque hex id
-        # instead of the song title and "Right Hand"/"Left Hand".
+        # instead of the song title and a blank staff. Part names are kept
+        # (print-object="no") but not printed — a solo piano's two staves
+        # don't need a label.
         assert f"<work-title>{body['title']}</work-title>" in xml
         assert "Music21 Fragment" not in xml
-        assert "<part-name>Right Hand</part-name>" in xml
-        assert "<part-name>Left Hand</part-name>" in xml
+        assert '<part-name print-object="no">Right Hand</part-name>' in xml
+        assert '<part-name print-object="no">Left Hand</part-name>' in xml
 
 
 def test_transcribe_with_no_input_returns_400():
