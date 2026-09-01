@@ -5,16 +5,28 @@ from app.notation.types import NoteEvent
 # Fixed-tempo assumption for v1 — tempo detection is out of scope.
 SECONDS_PER_QUARTER = 0.5  # 120 BPM
 
+# Audio timing must always be expressible in MusicXML. Round to nearest 32nd note
+# for guaranteed notation compatibility; this is imperceptible rhythmic resolution.
+NOTATION_GRID = 0.125  # nearest 32nd note (quarter note = 1.0, eighth = 0.5, etc.)
+
 
 def _seconds_to_quarter_length(seconds: float) -> float:
     return seconds / SECONDS_PER_QUARTER
+
+
+def _round_to_grid(value: float, grid: float) -> float:
+    """Round a value to the nearest grid step."""
+    return round(value / grid) * grid
 
 
 def _to_music21_note(event: NoteEvent) -> note.Note:
     m21_note = note.Note()
     m21_note.pitch.midi = event.pitch
     duration = _seconds_to_quarter_length(event.end - event.start)
-    m21_note.duration.quarterLength = max(duration, 0.25)
+    # Apply minimum duration floor at grid resolution, then round to grid
+    # to ensure all durations are MusicXML-expressible.
+    duration = max(duration, NOTATION_GRID)
+    m21_note.duration.quarterLength = _round_to_grid(duration, NOTATION_GRID)
     return m21_note
 
 
@@ -37,9 +49,12 @@ def notes_to_grand_staff(notes: list[NoteEvent]) -> stream.Score:
         accompaniment = group[:-1]
 
         offset = _seconds_to_quarter_length(melody_event.start)
+        offset = _round_to_grid(offset, NOTATION_GRID)
         rh.insert(offset, _to_music21_note(melody_event))
         for event in accompaniment:
-            lh.insert(_seconds_to_quarter_length(event.start), _to_music21_note(event))
+            acc_offset = _seconds_to_quarter_length(event.start)
+            acc_offset = _round_to_grid(acc_offset, NOTATION_GRID)
+            lh.insert(acc_offset, _to_music21_note(event))
 
     score = stream.Score()
     score.insert(0, rh)
