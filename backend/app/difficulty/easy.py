@@ -1,6 +1,6 @@
 import copy
 
-from music21 import stream
+from music21 import clef, stream
 
 from app.notation.hand_split import get_hand_parts
 from app.difficulty.quantize import quantize_part
@@ -44,4 +44,9 @@ def _reduce_to_root_per_slot(lh_part: stream.Part, grid: float) -> stream.Part:
         new_element = copy.deepcopy(lowest)
         new_element.duration.quarterLength = grid
         reduced.insert(slot, new_element)
+
+    # Preserve any clef from the input part
+    for c in lh_part.getElementsByClass(clef.Clef):
+        reduced.insert(0, copy.deepcopy(c))
+
     return reduced

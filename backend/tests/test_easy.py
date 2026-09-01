@@ -1,4 +1,4 @@
-from music21 import stream, note
+from music21 import stream, note, clef
 
 from app.notation.hand_split import get_hand_parts
 from app.difficulty.easy import to_easy
@@ -26,7 +26,7 @@ def test_easy_melody_is_quarter_quantized_and_range_narrowed():
     rh, _ = get_hand_parts(easy_score)
     notes = list(rh.flatten().notes)
     assert len(notes) == 1
-    assert notes[0].pitch.midi == 72  # C6 (MIDI 96) octave-shifted down to C5
+    assert notes[0].pitch.midi == 72  # C6 (MIDI 84) octave-shifted down to C5 (MIDI 72)
 
 
 def test_easy_bass_reduces_to_lowest_note_per_slot():
@@ -39,3 +39,20 @@ def test_easy_bass_reduces_to_lowest_note_per_slot():
     notes = list(lh.flatten().notes)
     assert len(notes) == 1
     assert notes[0].pitch.name == "C"
+
+
+def test_easy_preserves_lh_clef():
+    """Verify that LH output retains its BassClef from the input."""
+    rh = stream.Part(id="RH")
+    rh.insert(0, note.Note("C6"))
+    lh = stream.Part(id="LH")
+    lh.insert(0, clef.BassClef())
+    lh.insert(0, note.Note("C3"))
+    score = stream.Score()
+    score.insert(0, rh)
+    score.insert(0, lh)
+
+    easy_score = to_easy(score)
+    _, easy_lh = get_hand_parts(easy_score)
+    clefs = easy_lh.getElementsByClass(clef.BassClef)
+    assert len(clefs) == 1
