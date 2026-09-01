@@ -146,6 +146,63 @@ def test_cors_preflight_for_transcribe_allows_frontend_dev_origin():
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
+def test_songs_lists_transcribed_songs_newest_first(synthetic_piano_wav):
+    song_ids = []
+    for _ in range(2):
+        with open(synthetic_piano_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+            )
+        song_ids.append(response.json()["song_id"])
+
+    response = client.get("/songs")
+
+    assert response.status_code == 200
+    listed_ids = [s["song_id"] for s in response.json()]
+    assert listed_ids == list(reversed(song_ids))
+
+
+def test_get_song_returns_the_same_shape_as_transcribe(synthetic_piano_wav):
+    with open(synthetic_piano_wav, "rb") as f:
+        transcribe_response = client.post(
+            "/transcribe",
+            files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+        )
+    song_id = transcribe_response.json()["song_id"]
+
+    response = client.get(f"/songs/{song_id}")
+
+    assert response.status_code == 200
+    assert response.json() == transcribe_response.json()
+
+
+def test_get_song_returns_404_for_unknown_id():
+    response = client.get("/songs/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_delete_song_removes_it_from_storage_and_listing(synthetic_piano_wav):
+    with open(synthetic_piano_wav, "rb") as f:
+        transcribe_response = client.post(
+            "/transcribe",
+            files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+        )
+    song_id = transcribe_response.json()["song_id"]
+
+    delete_response = client.delete(f"/songs/{song_id}")
+
+    assert delete_response.status_code == 204
+    assert not (STORAGE_ROOT / song_id).exists()
+    assert client.get(f"/songs/{song_id}").status_code == 404
+    assert song_id not in [s["song_id"] for s in client.get("/songs").json()]
+
+
+def test_delete_song_returns_404_for_unknown_id():
+    response = client.delete("/songs/does-not-exist")
+    assert response.status_code == 404
+
+
 def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypatch, synthetic_piano_wav):
     """A malicious filename like '../../../etc/passwant.wav' must not let the
     upload escape the request's temp directory. We monkeypatch

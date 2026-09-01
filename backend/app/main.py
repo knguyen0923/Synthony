@@ -15,7 +15,16 @@ from app.transcription.audio_to_midi import transcribe_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
 from app.export import export_musicxml
-from app.storage import new_song_id, song_dir, write_metadata, evict_oldest_songs, STORAGE_ROOT
+from app.storage import (
+    new_song_id,
+    song_dir,
+    write_metadata,
+    evict_oldest_songs,
+    read_song,
+    list_songs,
+    delete_song,
+    STORAGE_ROOT,
+)
 
 MAX_DURATION_SECONDS = 600  # 10 minutes
 
@@ -47,9 +56,44 @@ class TranscribeResponse(BaseModel):
     difficulties: dict[str, DifficultyLink]
 
 
+class SongSummary(BaseModel):
+    song_id: str
+    title: str
+    source_type: str
+    source_url: Optional[str]
+    created_at: str
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/songs", response_model=list[SongSummary])
+def songs() -> list[dict]:
+    return list_songs()
+
+
+@app.get("/songs/{song_id}", response_model=TranscribeResponse)
+def song(song_id: str) -> TranscribeResponse:
+    metadata = read_song(song_id)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="Song not found")
+    return TranscribeResponse(
+        song_id=song_id,
+        title=metadata["title"],
+        difficulties={
+            tier: DifficultyLink(musicxml_url=f"/storage/{song_id}/{tier}.musicxml")
+            for tier in ("easy", "medium", "hard")
+        },
+    )
+
+
+@app.delete("/songs/{song_id}", status_code=204)
+def remove_song(song_id: str) -> None:
+    if read_song(song_id) is None:
+        raise HTTPException(status_code=404, detail="Song not found")
+    delete_song(song_id)
 
 
 @app.post("/transcribe", response_model=TranscribeResponse)

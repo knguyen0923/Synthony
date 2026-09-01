@@ -61,4 +61,32 @@ def evict_oldest_songs(limit: Optional[int] = None) -> None:
 
     song_dirs.sort(key=_created_at_sort_key)
     for d in song_dirs[:excess]:
-        shutil.rmtree(d, ignore_errors=True)
+        delete_song(d.name)
+
+
+def read_song(song_id: str) -> Optional[dict]:
+    """Read a stored song's metadata by id, or None if it doesn't exist
+    (e.g. it was never created, or was since deleted/evicted)."""
+    metadata_path = STORAGE_ROOT / song_id / "metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text())
+    except json.JSONDecodeError:
+        return None
+    return {"song_id": song_id, **metadata}
+
+
+def list_songs() -> list[dict]:
+    """List every stored song's metadata, newest first."""
+    if not STORAGE_ROOT.exists():
+        return []
+
+    songs = [read_song(d.name) for d in STORAGE_ROOT.iterdir() if d.is_dir()]
+    songs = [s for s in songs if s is not None]
+    songs.sort(key=lambda s: s["created_at"], reverse=True)
+    return songs
+
+
+def delete_song(song_id: str) -> None:
+    shutil.rmtree(STORAGE_ROOT / song_id, ignore_errors=True)

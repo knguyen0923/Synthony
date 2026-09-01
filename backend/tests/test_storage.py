@@ -6,6 +6,9 @@ from app.storage import (
     song_dir,
     write_metadata,
     evict_oldest_songs,
+    read_song,
+    list_songs,
+    delete_song,
     STORAGE_ROOT,
 )
 
@@ -94,3 +97,47 @@ def test_evict_oldest_songs_treats_a_directory_with_no_metadata_as_oldest():
 
     assert not (STORAGE_ROOT / orphan_id).exists()
     assert (STORAGE_ROOT / normal_id).exists()
+
+
+def test_read_song_returns_metadata_with_song_id():
+    song_id = _make_song("My Song", "2026-01-01T00:00:00+00:00")
+
+    metadata = read_song(song_id)
+
+    assert metadata["song_id"] == song_id
+    assert metadata["title"] == "My Song"
+
+
+def test_read_song_returns_none_for_unknown_id():
+    assert read_song(new_song_id()) is None
+
+
+def test_list_songs_returns_newest_first():
+    oldest = _make_song("Oldest", "2026-01-01T00:00:00+00:00")
+    newest = _make_song("Newest", "2026-01-02T00:00:00+00:00")
+
+    songs = list_songs()
+
+    assert [s["song_id"] for s in songs] == [newest, oldest]
+
+
+def test_list_songs_skips_directories_with_no_metadata():
+    orphan_id = new_song_id()
+    song_dir(orphan_id)
+    normal_id = _make_song("Normal", "2026-01-01T00:00:00+00:00")
+
+    songs = list_songs()
+
+    assert [s["song_id"] for s in songs] == [normal_id]
+
+
+def test_delete_song_removes_the_directory():
+    song_id = _make_song("Song", "2026-01-01T00:00:00+00:00")
+
+    delete_song(song_id)
+
+    assert not (STORAGE_ROOT / song_id).exists()
+
+
+def test_delete_song_does_not_raise_for_unknown_id():
+    delete_song(new_song_id())
