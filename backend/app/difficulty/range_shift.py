@@ -1,6 +1,6 @@
 import copy
 
-from music21 import stream
+from music21 import clef, stream
 
 
 def shift_into_range(part: stream.Part, low: int, high: int) -> stream.Part:
@@ -17,5 +17,9 @@ def shift_into_range(part: stream.Part, low: int, high: int) -> stream.Part:
             midi -= 12
         new_element.pitch.midi = midi
         shifted.insert(element.offset, new_element)
+
+    # Preserve any clef from the input part
+    for c in part.getElementsByClass(clef.Clef):
+        shifted.insert(0, copy.deepcopy(c))
 
     return shifted

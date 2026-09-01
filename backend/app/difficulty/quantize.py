@@ -1,6 +1,6 @@
 import copy
 
-from music21 import stream
+from music21 import clef, stream
 
 
 def quantize_part(part: stream.Part, grid: float) -> stream.Part:
@@ -19,5 +19,9 @@ def quantize_part(part: stream.Part, grid: float) -> stream.Part:
         new_element = copy.deepcopy(element)
         new_element.duration.quarterLength = grid
         quantized.insert(slot, new_element)
+
+    # Preserve any clef from the input part
+    for c in part.getElementsByClass(clef.Clef):
+        quantized.insert(0, copy.deepcopy(c))
 
     return quantized
