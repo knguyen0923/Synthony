@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -14,7 +14,9 @@ class SpotifyResolutionError(Exception):
     pass
 
 
-def resolve_and_download(spotify_url: str, dest_dir: Path, client_id: str, client_secret: str) -> Path:
+def resolve_and_download(
+    spotify_url: str, dest_dir: Path, client_id: str, client_secret: str
+) -> Tuple[Path, str]:
     match = TRACK_ID_PATTERN.search(spotify_url)
     if not match:
         raise SpotifyResolutionError(f"Could not parse Spotify track URL: {spotify_url}")
@@ -36,9 +38,11 @@ def resolve_and_download(spotify_url: str, dest_dir: Path, client_id: str, clien
         raise SpotifyResolutionError(f"No YouTube match found for '{search_query}'")
 
     try:
-        return download_audio(youtube_url, dest_dir)
+        path, _youtube_title = download_audio(youtube_url, dest_dir)
     except YouTubeResolutionError as exc:
         raise SpotifyResolutionError(str(exc)) from exc
+
+    return path, f"{artist} - {title}"
 
 
 def _search_youtube(query: str) -> Optional[str]:

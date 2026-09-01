@@ -18,6 +18,7 @@ class IngestedAudio:
     path: Path
     source_type: str
     source_url: Optional[str]
+    title: str
 
 
 def ingest(
@@ -35,22 +36,23 @@ def ingest(
             path = save_uploaded_file(uploaded_file_path, dest_dir, uploaded_filename or "")
         except UnsupportedAudioFormat as exc:
             raise IngestionError(str(exc), 400) from exc
-        return IngestedAudio(path=path, source_type="upload", source_url=None)
+        title = Path(uploaded_filename).stem if uploaded_filename else "Untitled"
+        return IngestedAudio(path=path, source_type="upload", source_url=None, title=title)
 
     if youtube_url is not None:
         try:
-            path = download_audio(youtube_url, dest_dir)
+            path, title = download_audio(youtube_url, dest_dir)
         except YouTubeResolutionError as exc:
             raise IngestionError(str(exc), 422) from exc
-        return IngestedAudio(path=path, source_type="youtube", source_url=youtube_url)
+        return IngestedAudio(path=path, source_type="youtube", source_url=youtube_url, title=title)
 
     if spotify_url is not None:
         try:
-            path = resolve_and_download(
+            path, title = resolve_and_download(
                 spotify_url, dest_dir, spotify_client_id, spotify_client_secret
             )
         except SpotifyResolutionError as exc:
             raise IngestionError(str(exc), 422) from exc
-        return IngestedAudio(path=path, source_type="spotify", source_url=spotify_url)
+        return IngestedAudio(path=path, source_type="spotify", source_url=spotify_url, title=title)
 
     raise IngestionError("No input source provided", 400)

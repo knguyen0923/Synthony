@@ -9,8 +9,15 @@ export function ScoreViewer({ musicXmlUrl }: ScoreViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    const osmd = new OpenSheetMusicDisplay(containerRef.current);
+    const el = containerRef.current;
+    if (!el) return;
+
+    // A prior OSMD instance (from a previous render, a tab switch, or a
+    // StrictMode double-invoke) may have already drawn into this container.
+    // OSMD only clears elements it drew itself on re-render, so clear the
+    // container before constructing a new instance to avoid scores stacking.
+    el.innerHTML = "";
+    const osmd = new OpenSheetMusicDisplay(el);
     let cancelled = false;
 
     (async () => {
@@ -25,6 +32,7 @@ export function ScoreViewer({ musicXmlUrl }: ScoreViewerProps) {
 
     return () => {
       cancelled = true;
+      el.innerHTML = "";
     };
   }, [musicXmlUrl]);
 

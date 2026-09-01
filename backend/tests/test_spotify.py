@@ -27,14 +27,16 @@ def test_resolve_and_download_happy_path(tmp_path, monkeypatch):
     monkeypatch.setattr(spotify_module, "_search_youtube", lambda query: "https://youtube.com/watch?v=xyz")
     monkeypatch.setattr(
         spotify_module, "download_audio",
-        lambda url, dest_dir: dest_dir / "source.mp3",
+        lambda url, dest_dir: (dest_dir / "source.mp3", "some youtube video title"),
     )
 
-    result = resolve_and_download(
+    path, title = resolve_and_download(
         "https://open.spotify.com/track/abc123", tmp_path, "id", "secret"
     )
 
-    assert result == tmp_path / "source.mp3"
+    assert path == tmp_path / "source.mp3"
+    # Uses the real Spotify track/artist metadata, not the YouTube video title.
+    assert title == "Debussy - Clair de Lune"
 
 
 def test_resolve_and_download_raises_on_unparseable_url(tmp_path):

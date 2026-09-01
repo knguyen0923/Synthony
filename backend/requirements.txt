@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 python-multipart
 httpx
-basic-pitch
+basic-pitch[onnx]
 music21
 librosa
 scipy

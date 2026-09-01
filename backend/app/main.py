@@ -5,6 +5,7 @@ from typing import Optional
 
 import librosa
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,6 +27,12 @@ SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.mount("/storage", StaticFiles(directory=str(STORAGE_ROOT)), name="storage")
 
 
@@ -57,7 +64,7 @@ async def transcribe(
         upload_tmp_path = None
         upload_filename = None
         if audio_file is not None:
-            upload_tmp_path = Path(tmp) / audio_file.filename
+            upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
             upload_tmp_path.write_bytes(await audio_file.read())
             upload_filename = audio_file.filename
 
@@ -92,7 +99,7 @@ async def transcribe(
     ):
         export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
 
-    title = Path(ingested.path).stem
+    title = ingested.title
     write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
 
     return TranscribeResponse(

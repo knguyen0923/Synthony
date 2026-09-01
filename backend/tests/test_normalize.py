@@ -18,29 +18,32 @@ def test_ingest_dispatches_to_file_upload(tmp_path, monkeypatch):
     assert result.source_type == "upload"
     assert result.source_url is None
     assert result.path == tmp_path / "source.wav"
+    assert result.title == "in"
 
 
 def test_ingest_dispatches_to_youtube(tmp_path, monkeypatch):
     monkeypatch.setattr(
         normalize_module, "download_audio",
-        lambda url, dest_dir: dest_dir / "source.mp3",
+        lambda url, dest_dir: (dest_dir / "source.mp3", "Real Video Title"),
     )
 
     result = ingest(tmp_path, youtube_url="https://youtube.com/watch?v=abc")
 
     assert result.source_type == "youtube"
     assert result.source_url == "https://youtube.com/watch?v=abc"
+    assert result.title == "Real Video Title"
 
 
 def test_ingest_dispatches_to_spotify(tmp_path, monkeypatch):
     monkeypatch.setattr(
         normalize_module, "resolve_and_download",
-        lambda url, dest_dir, client_id, client_secret: dest_dir / "source.mp3",
+        lambda url, dest_dir, client_id, client_secret: (dest_dir / "source.mp3", "Artist - Track"),
     )
 
     result = ingest(tmp_path, spotify_url="https://open.spotify.com/track/abc")
 
     assert result.source_type == "spotify"
+    assert result.title == "Artist - Track"
 
 
 def test_ingest_raises_400_when_no_input_provided(tmp_path):
