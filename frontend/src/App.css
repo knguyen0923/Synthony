@@ -1,42 +1,222 @@
 #root {
-  max-width: 1280px;
+  max-width: 960px;
+  width: 100%;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2.5rem 1.5rem;
+  text-align: left;
+}
+
+.app__title {
+  text-align: center;
+  font-size: 2.4rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  background: linear-gradient(90deg, var(--color-easy), var(--color-medium), var(--color-hard));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Input screen */
+
+.input-screen {
+  max-width: 480px;
+  margin: 2rem auto 0;
+}
+
+.input-screen__intro {
+  text-align: center;
+  color: var(--color-text-secondary);
+  margin-bottom: 2rem;
+}
+
+.input-screen__panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Upload form / QR scan (shared styling) */
+
+.upload-form,
+.qr-scan-button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.upload-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.upload-form__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.upload-form__divider {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.upload-form__link-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.upload-form__link-form input {
+  flex: 1;
+}
+
+.upload-form__link-form button,
+.input-screen .qr-scan-button > button {
+  background: var(--color-accent);
+  color: #14151a;
+  border-color: var(--color-accent);
+}
+.upload-form__link-form button:hover:not(:disabled),
+.input-screen .qr-scan-button > button:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.upload-form__status {
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.upload-form__error {
+  color: var(--color-error);
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.qr-scan-button__region {
+  max-width: 320px;
+  margin: 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+/* Result view */
+
+.app__result {
+  margin-top: 1.5rem;
+}
+
+.app__result-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.app__result-title {
+  margin: 0;
+  word-break: break-word;
+  font-size: 1.4rem;
+}
+
+.app__start-over {
+  white-space: nowrap;
+}
+
+/* Difficulty tabs (pill style, colored per tier) */
+
+.difficulty-tabs__list {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.difficulty-tabs__tab {
+  border-radius: 999px;
+  padding: 0.5em 1.2em;
+  background: var(--color-panel);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.difficulty-tabs__tab--easy[aria-selected="true"] {
+  background: var(--color-easy);
+  color: var(--color-easy-contrast);
+  border-color: var(--color-easy);
+}
+.difficulty-tabs__tab--medium[aria-selected="true"] {
+  background: var(--color-medium);
+  color: var(--color-medium-contrast);
+  border-color: var(--color-medium);
+}
+.difficulty-tabs__tab--hard[aria-selected="true"] {
+  background: var(--color-hard);
+  color: var(--color-hard-contrast);
+  border-color: var(--color-hard);
+}
+
+/* Score viewer */
+
+.score-viewer__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.score-viewer__toolbar button {
+  padding: 0.35em 0.8em;
+  font-size: 0.85em;
+}
+
+.score-viewer__zoom-level {
+  min-width: 3.5em;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.score-viewer__sheet {
+  background: var(--color-paper);
+  color: var(--color-paper-text);
+  border-radius: 12px;
+  padding: 1.25rem;
+  overflow-x: auto;
+}
+
+.score-viewer:fullscreen {
+  background-color: var(--color-bg);
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+/* Print / Save as PDF: show only the current score, nothing else */
+
+@media print {
+  .no-print {
+    display: none !important;
   }
-  to {
-    transform: rotate(360deg);
+
+  #root {
+    max-width: none;
+    padding: 0;
   }
-}
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  .score-viewer__sheet {
+    overflow-x: visible;
+    border-radius: 0;
+    padding: 0;
   }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }

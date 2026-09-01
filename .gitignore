@@ -8,5 +8,12 @@ backend/storage/
 node_modules/
 frontend/dist/
 
+# Env
+.env
+.env.local
+
 # Editors
 .DS_Store
+
+# Superpowers scratch (SDD workspaces, brainstorming sessions)
+.superpowers/

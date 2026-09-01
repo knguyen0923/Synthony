@@ -74,6 +74,33 @@ def test_download_audio_falls_back_to_actual_extension_when_mp3_missing(tmp_path
     assert title == "Some Video"
 
 
+def test_download_audio_falls_back_to_raw_file_when_postprocessing_raises_download_error(
+    tmp_path, monkeypatch
+):
+    """Real-world case (confirmed against a live video): the raw audio
+    download succeeds and lands on disk, but yt-dlp's FFmpegExtractAudio
+    postprocessor then fails (e.g. ffmpeg is missing) — yt-dlp wraps that
+    failure as a DownloadError raised from extract_info() itself, not as a
+    silent no-op. The already-downloaded file must still be used rather
+    than discarded as if the download itself had failed."""
+
+    class _PostprocessingFailsYoutubeDL(_FakeYoutubeDL):
+        def extract_info(self, url, download=True):
+            self.downloaded_url = url
+            dest_dir = self._dest_dir_from_outtmpl()
+            (dest_dir / "source.mp4").write_bytes(b"raw mp4 bytes, download succeeded")
+            raise yt_dlp.utils.DownloadError(
+                "ERROR: Postprocessing: ffprobe and ffmpeg not found."
+            )
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", lambda options: _PostprocessingFailsYoutubeDL(options))
+
+    path, title = download_audio("https://youtube.com/watch?v=ppfail", tmp_path)
+
+    assert path == tmp_path / "source.mp4"
+    assert title == "Untitled"
+
+
 def test_download_audio_raises_clean_error_when_no_file_produced_at_all(tmp_path, monkeypatch):
     class _NoOutputYoutubeDL(_FakeYoutubeDL):
         def extract_info(self, url, download=True):

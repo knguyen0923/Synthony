@@ -7,6 +7,24 @@ from app.notation.hand_split import notes_to_grand_staff, get_hand_parts, NOTATI
 from app.export import export_musicxml
 
 
+def test_grand_staff_has_braced_part_group_in_exported_musicxml():
+    """RH/LH must render as a connected piano grand staff (braced), not two
+    independent unbraced staves, in the exported MusicXML."""
+    notes = [
+        NoteEvent(start=0.0, end=0.5, pitch=60),  # melody -> RH
+        NoteEvent(start=0.0, end=0.5, pitch=48),  # accompaniment -> LH
+    ]
+    score = notes_to_grand_staff(notes)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_brace.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<part-group" in xml
+    assert "<group-symbol>brace</group-symbol>" in xml
+
+
 def test_lone_low_note_is_melody_and_goes_to_right_hand():
     notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]  # C3, alone = melody
     score = notes_to_grand_staff(notes)

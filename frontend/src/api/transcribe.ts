@@ -1,7 +1,6 @@
 import axios from "axios";
 import type { TranscribeResponse } from "./types";
-
-const API_BASE_URL = "http://localhost:8000";
+import { API_BASE_URL } from "./config";
 
 export async function transcribeFile(file: File): Promise<TranscribeResponse> {
   const form = new FormData();
@@ -14,13 +13,36 @@ export async function transcribeFile(file: File): Promise<TranscribeResponse> {
   return response.data;
 }
 
-export async function transcribeLink(url: string): Promise<TranscribeResponse> {
-  const form = new FormData();
-  if (url.includes("spotify.com")) {
-    form.append("spotify_url", url);
-  } else {
-    form.append("youtube_url", url);
+export type LinkKind = "youtube" | "spotify" | "invalid";
+
+/** Classify a pasted link by hostname so ingestion routing (and client-side
+ * validation) don't rely on a substring match that would silently forward
+ * arbitrary text to yt-dlp. */
+export function classifyLink(url: string): LinkKind {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return "invalid";
   }
+
+  if (hostname === "youtube.com" || hostname.endsWith(".youtube.com") || hostname === "youtu.be") {
+    return "youtube";
+  }
+  if (hostname === "spotify.com" || hostname.endsWith(".spotify.com")) {
+    return "spotify";
+  }
+  return "invalid";
+}
+
+export async function transcribeLink(url: string): Promise<TranscribeResponse> {
+  const kind = classifyLink(url);
+  if (kind === "invalid") {
+    throw new Error("That doesn't look like a YouTube or Spotify link.");
+  }
+
+  const form = new FormData();
+  form.append(kind === "spotify" ? "spotify_url" : "youtube_url", url);
   const response = await axios.post<TranscribeResponse>(
     `${API_BASE_URL}/transcribe`,
     form,

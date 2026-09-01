@@ -9,7 +9,9 @@ interface UploadFormProps {
 function extractErrorMessage(err: unknown): string {
   const detail = (err as { response?: { data?: { detail?: string } } })?.response
     ?.data?.detail;
-  return detail ?? "Something went wrong transcribing that audio.";
+  if (detail) return detail;
+  if (err instanceof Error) return err.message;
+  return "Something went wrong transcribing that audio.";
 }
 
 export function UploadForm({ onSuccess }: UploadFormProps) {
@@ -43,19 +45,47 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
   }
 
   return (
-    <div>
-      <input type="file" accept=".wav,.mp3" onChange={handleFileChange} />
-      <form onSubmit={handleLinkSubmit}>
+    <div className="upload-form">
+      <div className="upload-form__section">
+        <label className="upload-form__label" htmlFor="audio-file-input">
+          Upload a file
+        </label>
         <input
-          type="text"
-          placeholder="Paste a YouTube or Spotify link"
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
+          id="audio-file-input"
+          type="file"
+          accept=".wav,.mp3"
+          onChange={handleFileChange}
+          disabled={loading}
         />
-        <button type="submit">Transcribe</button>
-      </form>
-      {loading && <p>Transcribing…</p>}
-      {error && <p role="alert">{error}</p>}
+      </div>
+
+      <div className="upload-form__divider">or</div>
+
+      <div className="upload-form__section">
+        <label className="upload-form__label" htmlFor="link-input">
+          Paste a link
+        </label>
+        <form className="upload-form__link-form" onSubmit={handleLinkSubmit}>
+          <input
+            id="link-input"
+            type="text"
+            placeholder="YouTube or Spotify link"
+            value={link}
+            onChange={(e) => setLink(e.target.value)}
+            disabled={loading}
+          />
+          <button type="submit" disabled={loading}>
+            Transcribe
+          </button>
+        </form>
+      </div>
+
+      {loading && <p className="upload-form__status">Transcribing…</p>}
+      {error && (
+        <p className="upload-form__error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

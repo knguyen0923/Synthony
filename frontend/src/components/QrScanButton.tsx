@@ -12,7 +12,9 @@ const SCANNER_ELEMENT_ID = "qr-scanner-region";
 function extractErrorMessage(err: unknown): string {
   const detail = (err as { response?: { data?: { detail?: string } } })?.response
     ?.data?.detail;
-  return detail ?? "Couldn't transcribe the scanned link.";
+  if (detail) return detail;
+  if (err instanceof Error) return err.message;
+  return "Couldn't transcribe the scanned link.";
 }
 
 export function QrScanButton({ onSuccess }: QrScanButtonProps) {
@@ -52,10 +54,17 @@ export function QrScanButton({ onSuccess }: QrScanButtonProps) {
   }, [scanning]);
 
   return (
-    <div>
-      <button onClick={() => setScanning(true)}>Scan QR code</button>
-      {scanning && <div id={SCANNER_ELEMENT_ID} />}
-      {error && <p role="alert">{error}</p>}
+    <div className="qr-scan-button">
+      <label className="upload-form__label">Scan a QR code</label>
+      <button onClick={() => setScanning(true)} disabled={scanning}>
+        Scan QR code
+      </button>
+      {scanning && <div id={SCANNER_ELEMENT_ID} className="qr-scan-button__region" />}
+      {error && (
+        <p className="upload-form__error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

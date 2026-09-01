@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -60,47 +61,56 @@ async def transcribe(
     song_id = new_song_id()
     dest_dir = song_dir(song_id)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        upload_tmp_path = None
-        upload_filename = None
-        if audio_file is not None:
-            upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
-            upload_tmp_path.write_bytes(await audio_file.read())
-            upload_filename = audio_file.filename
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            upload_tmp_path = None
+            upload_filename = None
+            if audio_file is not None:
+                upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
+                upload_tmp_path.write_bytes(await audio_file.read())
+                upload_filename = audio_file.filename
 
-        try:
-            ingested = ingest(
-                dest_dir,
-                uploaded_file_path=upload_tmp_path,
-                uploaded_filename=upload_filename,
-                youtube_url=youtube_url,
-                spotify_url=spotify_url,
-                spotify_client_id=SPOTIFY_CLIENT_ID,
-                spotify_client_secret=SPOTIFY_CLIENT_SECRET,
-            )
-        except IngestionError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            try:
+                ingested = ingest(
+                    dest_dir,
+                    uploaded_file_path=upload_tmp_path,
+                    uploaded_filename=upload_filename,
+                    youtube_url=youtube_url,
+                    spotify_url=spotify_url,
+                    spotify_client_id=SPOTIFY_CLIENT_ID,
+                    spotify_client_secret=SPOTIFY_CLIENT_SECRET,
+                )
+            except IngestionError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    duration = librosa.get_duration(path=str(ingested.path))
-    if duration > MAX_DURATION_SECONDS:
-        raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
+        duration = librosa.get_duration(path=str(ingested.path))
+        if duration > MAX_DURATION_SECONDS:
+            raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
 
-    notes = transcribe_audio_to_notes(str(ingested.path))
-    if not notes:
-        raise HTTPException(status_code=422, detail="No pitched content detected")
+        notes = transcribe_audio_to_notes(str(ingested.path))
+        if not notes:
+            raise HTTPException(status_code=422, detail="No pitched content detected")
 
-    score = notes_to_grand_staff(notes)
-    variants = generate_variants(score)
+        score = notes_to_grand_staff(notes)
+        variants = generate_variants(score)
 
-    for tier, variant_score in (
-        ("easy", variants.easy),
-        ("medium", variants.medium),
-        ("hard", variants.hard),
-    ):
-        export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
+        for tier, variant_score in (
+            ("easy", variants.easy),
+            ("medium", variants.medium),
+            ("hard", variants.hard),
+        ):
+            export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
 
-    title = ingested.title
-    write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
+        title = ingested.title
+        write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
+    except Exception:
+        # song_dir() already created dest_dir before any of the above ran;
+        # any failure past that point (a rejected upload, a duration-cap
+        # violation, no pitched content, a downloaded-but-unusable YouTube
+        # file, ...) must not leave an orphan directory — or, for YouTube
+        # input, an orphan downloaded audio file — behind under STORAGE_ROOT.
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
 
     return TranscribeResponse(
         song_id=song_id,

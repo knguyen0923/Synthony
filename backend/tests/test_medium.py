@@ -1,7 +1,11 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from music21 import stream, note, clef
 
 from app.notation.hand_split import get_hand_parts
 from app.difficulty.medium import to_medium
+from app.export import export_musicxml
 
 
 def _score(rh_notes: list[tuple[float, str]], lh_notes: list[tuple[float, str]]) -> stream.Score:
@@ -15,6 +19,19 @@ def _score(rh_notes: list[tuple[float, str]], lh_notes: list[tuple[float, str]])
     score.insert(0, rh)
     score.insert(0, lh)
     return score
+
+
+def test_medium_output_has_braced_part_group_in_exported_musicxml():
+    score = _score(rh_notes=[(0.0, "C4")], lh_notes=[(0.0, "C3")])
+    medium_score = to_medium(score)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_medium_brace.musicxml"
+        export_musicxml(medium_score, output_path)
+        xml = output_path.read_text()
+
+    assert "<part-group" in xml
+    assert "<group-symbol>brace</group-symbol>" in xml
 
 
 def test_medium_melody_quantizes_to_eighth_grid():

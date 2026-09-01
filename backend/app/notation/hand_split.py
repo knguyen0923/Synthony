@@ -1,4 +1,4 @@
-from music21 import stream, note, clef
+from music21 import stream, note, clef, layout
 
 from app.notation.types import NoteEvent
 
@@ -30,6 +30,21 @@ def _to_music21_note(event: NoteEvent) -> note.Note:
     return m21_note
 
 
+def build_grand_staff_score(rh: stream.Part, lh: stream.Part) -> stream.Score:
+    """Assemble RH/LH parts into a Score with a piano brace connecting them,
+    so exported MusicXML renders as a single connected grand staff rather
+    than two independent staves. Every score-construction site (raw
+    grand-staff assembly, and each difficulty tier that builds a fresh
+    Score from its own RH/LH parts) must go through this helper — Hard's
+    deepcopy passthrough is the only exception, since it inherits the
+    brace from its input score automatically."""
+    score = stream.Score()
+    score.insert(0, rh)
+    score.insert(0, lh)
+    score.insert(0, layout.StaffGroup([rh, lh], name="Piano", abbreviation="Pno.", symbol="brace"))
+    return score
+
+
 def notes_to_grand_staff(notes: list[NoteEvent]) -> stream.Score:
     """Group notes by onset; the highest-pitched note at each onset is the
     melody and always goes to the right hand, regardless of its absolute
@@ -56,10 +71,7 @@ def notes_to_grand_staff(notes: list[NoteEvent]) -> stream.Score:
             acc_offset = _round_to_grid(acc_offset, NOTATION_GRID)
             lh.insert(acc_offset, _to_music21_note(event))
 
-    score = stream.Score()
-    score.insert(0, rh)
-    score.insert(0, lh)
-    return score
+    return build_grand_staff_score(rh, lh)
 
 
 def get_hand_parts(score: stream.Score) -> tuple[stream.Part, stream.Part]:

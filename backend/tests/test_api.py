@@ -37,6 +37,60 @@ def test_transcribe_with_no_input_returns_400():
     assert response.status_code == 400
 
 
+def test_transcribe_failure_cleans_up_orphan_song_dir(monkeypatch):
+    """A request that fails after song_dir(song_id) has already created the
+    directory (e.g. ingestion fails validation) must not leave an empty
+    orphan directory behind under STORAGE_ROOT."""
+    import app.main as main_module
+
+    captured_song_ids = []
+    real_new_song_id = main_module.new_song_id
+
+    def spying_new_song_id():
+        song_id = real_new_song_id()
+        captured_song_ids.append(song_id)
+        return song_id
+
+    monkeypatch.setattr(main_module, "new_song_id", spying_new_song_id)
+
+    response = client.post("/transcribe")
+
+    assert response.status_code == 400
+    assert captured_song_ids, "expected new_song_id() to have been called"
+    for song_id in captured_song_ids:
+        assert not (STORAGE_ROOT / song_id).exists()
+
+
+def test_transcribe_no_pitched_content_cleans_up_orphan_song_dir(monkeypatch, synthetic_piano_wav):
+    """A request that fails later in the pipeline (after real audio has been
+    ingested into song_dir) must also clean up — not just early ingestion
+    failures — including any audio file already written to disk."""
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "transcribe_audio_to_notes", lambda path: [])
+
+    captured_song_ids = []
+    real_new_song_id = main_module.new_song_id
+
+    def spying_new_song_id():
+        song_id = real_new_song_id()
+        captured_song_ids.append(song_id)
+        return song_id
+
+    monkeypatch.setattr(main_module, "new_song_id", spying_new_song_id)
+
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post(
+            "/transcribe",
+            files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+        )
+
+    assert response.status_code == 422
+    assert captured_song_ids, "expected new_song_id() to have been called"
+    for song_id in captured_song_ids:
+        assert not (STORAGE_ROOT / song_id).exists()
+
+
 def test_cors_allows_frontend_dev_origin():
     # The frontend dev server runs on http://localhost:5173 and calls this
     # API cross-origin; the browser only exposes the response if the server

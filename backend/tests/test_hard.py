@@ -1,7 +1,12 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from music21 import stream, note
 
-from app.notation.hand_split import get_hand_parts
+from app.notation.hand_split import get_hand_parts, notes_to_grand_staff
+from app.notation.types import NoteEvent
 from app.difficulty.hard import to_hard
+from app.export import export_musicxml
 
 
 def test_hard_is_an_unmodified_deep_copy():
@@ -19,3 +24,22 @@ def test_hard_is_an_unmodified_deep_copy():
     assert [n.pitch.midi for n in hard_rh.flatten().notes] == [96]  # unchanged
     assert [n.pitch.midi for n in hard_lh.flatten().notes] == [36]  # unchanged
     assert hard_score is not score  # independent copy, not the same object
+
+
+def test_hard_output_has_braced_part_group_in_exported_musicxml():
+    """Hard's deepcopy passthrough must preserve the grand-staff brace that
+    notes_to_grand_staff attaches to its input score."""
+    notes = [
+        NoteEvent(start=0.0, end=0.5, pitch=60),
+        NoteEvent(start=0.0, end=0.5, pitch=48),
+    ]
+    score = notes_to_grand_staff(notes)
+    hard_score = to_hard(score)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_hard_brace.musicxml"
+        export_musicxml(hard_score, output_path)
+        xml = output_path.read_text()
+
+    assert "<part-group" in xml
+    assert "<group-symbol>brace</group-symbol>" in xml
