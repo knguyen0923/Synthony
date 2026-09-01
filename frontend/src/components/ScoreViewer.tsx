@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { OpenSheetMusicDisplay } from "opensheetmusicdisplay";
+import { jsPDF } from "jspdf";
+import { svg2pdf } from "svg2pdf.js";
 import { API_BASE_URL } from "../api/config";
 
 interface ScoreViewerProps {
@@ -27,7 +29,8 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
   const zoomRef = useRef(1.0);
   const [zoom, setZoomState] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -114,7 +117,7 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
   }
 
   async function downloadMusicXml() {
-    setDownloadError(null);
+    setActionError(null);
     try {
       // A plain <a href download> is unreliable across a cross-origin
       // backend (localhost:8000 vs. the frontend's localhost:5173) — browsers
@@ -131,7 +134,47 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
       link.click();
       URL.revokeObjectURL(blobUrl);
     } catch {
-      setDownloadError("Couldn't download the MusicXML file.");
+      setActionError("Couldn't download the MusicXML file.");
+    }
+  }
+
+  async function downloadPdf() {
+    const osmd = osmdRef.current;
+    const container = containerRef.current;
+    if (!osmd || !container) return;
+
+    setActionError(null);
+    setIsExportingPdf(true);
+    try {
+      // Reuse the same paginated ("Letter_P") layout the print flow switches
+      // to, so PDF pages break at the same whole-system boundaries instead of
+      // wherever OSMD's continuous on-screen layout happens to run.
+      osmd.setPageFormat("Letter_P");
+      osmd.render();
+
+      const pageDivs = Array.from(
+        container.querySelectorAll<HTMLElement>('[id^="osmdCanvasPage"]')
+      ).sort((a, b) => Number(a.id.slice("osmdCanvasPage".length)) - Number(b.id.slice("osmdCanvasPage".length)));
+      const pageSvgs = pageDivs
+        .map((div) => div.querySelector("svg"))
+        .filter((svg): svg is SVGSVGElement => svg !== null);
+      if (pageSvgs.length === 0) throw new Error("No rendered pages found");
+
+      const width = pageSvgs[0].width.baseVal.value;
+      const height = pageSvgs[0].height.baseVal.value;
+      const pdf = new jsPDF({ unit: "px", format: [width, height] });
+
+      for (let i = 0; i < pageSvgs.length; i++) {
+        if (i > 0) pdf.addPage([width, height]);
+        await svg2pdf(pageSvgs[i], pdf, { x: 0, y: 0, width, height });
+      }
+      pdf.save(`${sanitizeFilename(title ?? "score")}.pdf`);
+    } catch {
+      setActionError("Couldn't export the PDF.");
+    } finally {
+      osmd.setPageFormat("Endless");
+      osmd.render();
+      setIsExportingPdf(false);
     }
   }
 
@@ -151,13 +194,16 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
         <button type="button" onClick={downloadMusicXml}>
           Download MusicXML
         </button>
+        <button type="button" onClick={downloadPdf} disabled={isExportingPdf}>
+          {isExportingPdf ? "Exporting PDF…" : "Download PDF"}
+        </button>
         <button type="button" onClick={() => window.print()}>
-          Print / Save as PDF
+          Print
         </button>
       </div>
-      {downloadError && (
+      {actionError && (
         <p className="upload-form__error no-print" role="alert">
-          {downloadError}
+          {actionError}
         </p>
       )}
       <div className="score-viewer__sheet" ref={containerRef} />
