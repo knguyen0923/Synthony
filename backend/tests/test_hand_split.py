@@ -2,6 +2,8 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from music21 import clef
+
 from app.notation.types import NoteEvent
 from app.notation.hand_split import notes_to_grand_staff, get_hand_parts, NOTATION_GRID
 from app.export import export_musicxml
@@ -23,6 +25,107 @@ def test_grand_staff_has_braced_part_group_in_exported_musicxml():
 
     assert "<part-group" in xml
     assert "<group-symbol>brace</group-symbol>" in xml
+
+
+def test_grand_staff_parts_are_named_in_exported_musicxml():
+    """Without an explicit part name, music21 exports an empty <part-name>,
+    which viewers render as the internal id (an opaque hex string) instead
+    of a human-readable instrument label."""
+    notes = [
+        NoteEvent(start=0.0, end=0.5, pitch=60),
+        NoteEvent(start=0.0, end=0.5, pitch=48),
+    ]
+    score = notes_to_grand_staff(notes)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_names.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<part-name>Right Hand</part-name>" in xml
+    assert "<part-name>Left Hand</part-name>" in xml
+
+
+def test_grand_staff_title_is_set_in_exported_musicxml():
+    """Without an explicit title, music21 exports a placeholder
+    "Music21 Fragment" title instead of the real song title."""
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes, title="Clair de Lune")
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_title.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<work-title>Clair de Lune</work-title>" in xml
+    assert "Music21 Fragment" not in xml
+
+
+def test_grand_staff_with_no_title_falls_back_to_music21_default():
+    """No title provided -> no crash; music21's own default stands."""
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes)
+    assert score.metadata is None or score.metadata.title is None
+
+
+def test_sustained_low_melody_run_gets_temporary_bass_clef():
+    """A melody that dips into the bass register for a sustained run should
+    get a temporary bass clef there, then switch back — never reassigned
+    to the left hand, only redrawn with a different clef."""
+    low_pitches = [40, 41, 42, 43, 44]  # 5 consecutive low notes (>= MIN_CLEF_CHANGE_RUN)
+    notes = [
+        NoteEvent(start=i * 0.5, end=i * 0.5 + 0.5, pitch=p) for i, p in enumerate(low_pitches)
+    ] + [NoteEvent(start=2.5, end=3.0, pitch=72)]  # back to normal register
+
+    score = notes_to_grand_staff(notes)
+    rh, lh = get_hand_parts(score)
+
+    # All notes are lone onsets, so all are melody -> all stay in RH.
+    assert [n.pitch.midi for n in rh.flatten().notes] == low_pitches + [72]
+
+    clefs = sorted(rh.getElementsByClass(clef.Clef), key=lambda c: c.offset)
+    assert len(clefs) == 2
+    assert clefs[0].sign == "F" and clefs[0].offset == 0
+    assert clefs[1].sign == "G" and clefs[1].offset == 5.0
+
+
+def test_brief_low_dip_in_melody_does_not_trigger_clef_change():
+    """A single passing low tone shouldn't cause a clef change — only a
+    sustained run does."""
+    notes = [
+        NoteEvent(start=0.0, end=0.5, pitch=72),
+        NoteEvent(start=0.5, end=1.0, pitch=40),  # brief dip, only 1 note
+        NoteEvent(start=1.0, end=1.5, pitch=72),
+    ]
+    score = notes_to_grand_staff(notes)
+    rh, lh = get_hand_parts(score)
+
+    clefs = list(rh.getElementsByClass(clef.Clef))
+    assert len(clefs) == 1
+    assert clefs[0].sign == "G"
+
+
+def test_sustained_high_accompaniment_run_gets_temporary_treble_clef():
+    """Symmetric case: a left-hand accompaniment sustained in a high
+    register gets a temporary treble clef, then switches back."""
+    notes = []
+    for i in range(5):
+        t = i * 0.5
+        notes.append(NoteEvent(start=t, end=t + 0.5, pitch=80))  # melody -> RH
+        notes.append(NoteEvent(start=t, end=t + 0.5, pitch=68))  # accompaniment -> LH, high register
+    # one more onset where the accompaniment drops back to normal register
+    notes.append(NoteEvent(start=2.5, end=3.0, pitch=80))
+    notes.append(NoteEvent(start=2.5, end=3.0, pitch=40))
+
+    score = notes_to_grand_staff(notes)
+    rh, lh = get_hand_parts(score)
+
+    assert [n.pitch.midi for n in lh.flatten().notes] == [68, 68, 68, 68, 68, 40]
+
+    clefs = sorted(lh.getElementsByClass(clef.Clef), key=lambda c: c.offset)
+    assert len(clefs) == 2
+    assert clefs[0].sign == "G" and clefs[0].offset == 0
+    assert clefs[1].sign == "F" and clefs[1].offset == 5.0
 
 
 def test_lone_low_note_is_melody_and_goes_to_right_hand():

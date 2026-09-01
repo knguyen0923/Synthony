@@ -91,7 +91,8 @@ async def transcribe(
         if not notes:
             raise HTTPException(status_code=422, detail="No pitched content detected")
 
-        score = notes_to_grand_staff(notes)
+        title = ingested.title
+        score = notes_to_grand_staff(notes, title=title)
         variants = generate_variants(score)
 
         for tier, variant_score in (
@@ -101,7 +102,6 @@ async def transcribe(
         ):
             export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
 
-        title = ingested.title
         write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
     except Exception:
         # song_dir() already created dest_dir before any of the above ran;

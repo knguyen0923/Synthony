@@ -43,3 +43,23 @@ def test_hard_output_has_braced_part_group_in_exported_musicxml():
 
     assert "<part-group" in xml
     assert "<group-symbol>brace</group-symbol>" in xml
+
+
+def test_hard_output_has_part_names_and_title_in_exported_musicxml():
+    """Hard's deepcopy passthrough must preserve the part names and title
+    that notes_to_grand_staff attaches to its input score."""
+    notes = [
+        NoteEvent(start=0.0, end=0.5, pitch=60),
+        NoteEvent(start=0.0, end=0.5, pitch=48),
+    ]
+    score = notes_to_grand_staff(notes, title="Clair de Lune")
+    hard_score = to_hard(score)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_hard_names.musicxml"
+        export_musicxml(hard_score, output_path)
+        xml = output_path.read_text()
+
+    assert "<part-name>Right Hand</part-name>" in xml
+    assert "<part-name>Left Hand</part-name>" in xml
+    assert "<work-title>Clair de Lune</work-title>" in xml

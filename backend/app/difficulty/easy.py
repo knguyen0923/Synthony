@@ -2,7 +2,7 @@ import copy
 
 from music21 import clef, stream
 
-from app.notation.hand_split import get_hand_parts, build_grand_staff_score
+from app.notation.hand_split import get_hand_parts, build_grand_staff_score, get_title
 from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 
@@ -24,7 +24,7 @@ def to_easy(score: stream.Score) -> stream.Score:
         for element in part.flatten().notes:
             element.pitch.simplifyEnharmonic(inPlace=True)
 
-    return build_grand_staff_score(rh_ranged, lh_ranged)
+    return build_grand_staff_score(rh_ranged, lh_ranged, title=get_title(score))
 
 
 def _reduce_to_root_per_slot(lh_part: stream.Part, grid: float) -> stream.Part:

@@ -1,9 +1,9 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from music21 import stream, note, clef
+from music21 import stream, note, clef, metadata
 
-from app.notation.hand_split import get_hand_parts
+from app.notation.hand_split import get_hand_parts, get_title
 from app.difficulty.medium import to_medium
 from app.export import export_musicxml
 
@@ -19,6 +19,16 @@ def _score(rh_notes: list[tuple[float, str]], lh_notes: list[tuple[float, str]])
     score.insert(0, rh)
     score.insert(0, lh)
     return score
+
+
+def test_medium_carries_title_forward_from_input_score():
+    score = _score(rh_notes=[(0.0, "C4")], lh_notes=[])
+    score.metadata = metadata.Metadata()
+    score.metadata.title = "Clair de Lune"
+
+    medium_score = to_medium(score)
+
+    assert get_title(medium_score) == "Clair de Lune"
 
 
 def test_medium_output_has_braced_part_group_in_exported_musicxml():

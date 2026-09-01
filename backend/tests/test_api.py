@@ -30,6 +30,14 @@ def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_pi
     for tier in ("easy", "medium", "hard"):
         musicxml_path = STORAGE_ROOT / song_id / f"{tier}.musicxml"
         assert musicxml_path.exists()
+        xml = musicxml_path.read_text()
+        # Real title/part-name threading, not music21's defaults — a viewer
+        # would otherwise show "Music21 Fragment" and an opaque hex id
+        # instead of the song title and "Right Hand"/"Left Hand".
+        assert f"<work-title>{body['title']}</work-title>" in xml
+        assert "Music21 Fragment" not in xml
+        assert "<part-name>Right Hand</part-name>" in xml
+        assert "<part-name>Left Hand</part-name>" in xml
 
 
 def test_transcribe_with_no_input_returns_400():

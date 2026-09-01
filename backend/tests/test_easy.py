@@ -1,9 +1,9 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from music21 import stream, note, clef
+from music21 import stream, note, clef, metadata
 
-from app.notation.hand_split import get_hand_parts
+from app.notation.hand_split import get_hand_parts, get_title
 from app.difficulty.easy import to_easy
 from app.export import export_musicxml
 
@@ -31,6 +31,16 @@ def test_easy_melody_is_quarter_quantized_and_range_narrowed():
     notes = list(rh.flatten().notes)
     assert len(notes) == 1
     assert notes[0].pitch.midi == 72  # C6 (MIDI 84) octave-shifted down to C5 (MIDI 72)
+
+
+def test_easy_carries_title_forward_from_input_score():
+    score = _score(rh_notes=[(0.0, "C5")], lh_notes=[])
+    score.metadata = metadata.Metadata()
+    score.metadata.title = "Clair de Lune"
+
+    easy_score = to_easy(score)
+
+    assert get_title(easy_score) == "Clair de Lune"
 
 
 def test_easy_output_has_braced_part_group_in_exported_musicxml():
