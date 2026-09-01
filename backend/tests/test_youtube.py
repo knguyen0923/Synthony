@@ -1,7 +1,7 @@
 import pytest
 import yt_dlp
 
-from app.ingestion.youtube import download_audio, YouTubeResolutionError
+from app.ingestion.youtube import download_audio, YouTubeResolutionError, YouTubeDurationExceededError
 
 
 class _FakeYoutubeDL:
@@ -111,3 +111,53 @@ def test_download_audio_raises_clean_error_when_no_file_produced_at_all(tmp_path
 
     with pytest.raises(YouTubeResolutionError, match="ffmpeg"):
         download_audio("https://youtube.com/watch?v=noaudio", tmp_path)
+
+
+def test_download_audio_rejects_over_length_video_without_downloading(tmp_path, monkeypatch):
+    """A video over the duration cap must be rejected via a metadata-only
+    probe (download=False) — never actually downloaded."""
+
+    class _LongVideoYoutubeDL(_FakeYoutubeDL):
+        def extract_info(self, url, download=True):
+            assert not download, "must only probe metadata, never download, once over the cap"
+            return {"duration": 700}
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", lambda options: _LongVideoYoutubeDL(options))
+
+    with pytest.raises(YouTubeDurationExceededError):
+        download_audio("https://youtube.com/watch?v=toolong", tmp_path, max_duration_seconds=600)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_audio_proceeds_when_under_duration_cap(tmp_path, monkeypatch):
+    class _ShortVideoYoutubeDL(_FakeYoutubeDL):
+        def extract_info(self, url, download=True):
+            if not download:
+                return {"duration": 120}
+            return super().extract_info(url, download=download)
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", lambda options: _ShortVideoYoutubeDL(options))
+
+    path, title = download_audio(
+        "https://youtube.com/watch?v=short", tmp_path, max_duration_seconds=600
+    )
+
+    assert path == tmp_path / "source.mp3"
+    assert title == "Clair de Lune (Debussy)"
+
+
+def test_download_audio_skips_duration_check_when_not_requested(tmp_path, monkeypatch):
+    """No max_duration_seconds -> no metadata-only probe call at all."""
+    download_calls = []
+
+    class _TrackingYoutubeDL(_FakeYoutubeDL):
+        def extract_info(self, url, download=True):
+            download_calls.append(download)
+            return super().extract_info(url, download=download)
+
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", lambda options: _TrackingYoutubeDL(options))
+
+    download_audio("https://youtube.com/watch?v=abc123", tmp_path)
+
+    assert download_calls == [True]

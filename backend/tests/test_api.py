@@ -42,6 +42,28 @@ def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_pi
         assert '<part-name print-object="no">Left Hand</part-name>' in xml
 
 
+def test_transcribe_evicts_oldest_songs_once_over_the_history_cap(monkeypatch, synthetic_piano_wav):
+    import app.storage as storage_module
+
+    monkeypatch.setattr(storage_module, "MAX_STORED_SONGS", 2)
+
+    song_ids = []
+    for _ in range(3):
+        with open(synthetic_piano_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+            )
+        assert response.status_code == 200
+        song_ids.append(response.json()["song_id"])
+
+    # The first (oldest) song should have been evicted once the 3rd request
+    # pushed the count over the cap; the 2 newest remain.
+    assert not (STORAGE_ROOT / song_ids[0]).exists()
+    assert (STORAGE_ROOT / song_ids[1]).exists()
+    assert (STORAGE_ROOT / song_ids[2]).exists()
+
+
 def test_transcribe_with_no_input_returns_400():
     response = client.post("/transcribe")
     assert response.status_code == 400

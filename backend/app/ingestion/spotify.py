@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 
-from app.ingestion.youtube import download_audio, YouTubeResolutionError
+from app.ingestion.youtube import download_audio, YouTubeResolutionError, YouTubeDurationExceededError
 
 TRACK_ID_PATTERN = re.compile(r"track/([a-zA-Z0-9]+)")
 
@@ -14,8 +14,16 @@ class SpotifyResolutionError(Exception):
     pass
 
 
+class SpotifyDurationExceededError(SpotifyResolutionError):
+    pass
+
+
 def resolve_and_download(
-    spotify_url: str, dest_dir: Path, client_id: str, client_secret: str
+    spotify_url: str,
+    dest_dir: Path,
+    client_id: str,
+    client_secret: str,
+    max_duration_seconds: Optional[int] = None,
 ) -> Tuple[Path, str]:
     match = TRACK_ID_PATTERN.search(spotify_url)
     if not match:
@@ -38,7 +46,11 @@ def resolve_and_download(
         raise SpotifyResolutionError(f"No YouTube match found for '{search_query}'")
 
     try:
-        path, _youtube_title = download_audio(youtube_url, dest_dir)
+        path, _youtube_title = download_audio(
+            youtube_url, dest_dir, max_duration_seconds=max_duration_seconds
+        )
+    except YouTubeDurationExceededError as exc:
+        raise SpotifyDurationExceededError(str(exc)) from exc
     except YouTubeResolutionError as exc:
         raise SpotifyResolutionError(str(exc)) from exc
 

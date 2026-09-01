@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.ingestion.upload import save_uploaded_file, UnsupportedAudioFormat
-from app.ingestion.youtube import download_audio, YouTubeResolutionError
-from app.ingestion.spotify import resolve_and_download, SpotifyResolutionError
+from app.ingestion.youtube import download_audio, YouTubeResolutionError, YouTubeDurationExceededError
+from app.ingestion.spotify import resolve_and_download, SpotifyResolutionError, SpotifyDurationExceededError
 
 
 class IngestionError(Exception):
@@ -30,6 +30,7 @@ def ingest(
     spotify_url: Optional[str] = None,
     spotify_client_id: str = "",
     spotify_client_secret: str = "",
+    max_duration_seconds: Optional[int] = None,
 ) -> IngestedAudio:
     if uploaded_file_path is not None:
         try:
@@ -41,7 +42,11 @@ def ingest(
 
     if youtube_url is not None:
         try:
-            path, title = download_audio(youtube_url, dest_dir)
+            path, title = download_audio(
+                youtube_url, dest_dir, max_duration_seconds=max_duration_seconds
+            )
+        except YouTubeDurationExceededError as exc:
+            raise IngestionError(str(exc), 413) from exc
         except YouTubeResolutionError as exc:
             raise IngestionError(str(exc), 422) from exc
         return IngestedAudio(path=path, source_type="youtube", source_url=youtube_url, title=title)
@@ -49,8 +54,14 @@ def ingest(
     if spotify_url is not None:
         try:
             path, title = resolve_and_download(
-                spotify_url, dest_dir, spotify_client_id, spotify_client_secret
+                spotify_url,
+                dest_dir,
+                spotify_client_id,
+                spotify_client_secret,
+                max_duration_seconds=max_duration_seconds,
             )
+        except SpotifyDurationExceededError as exc:
+            raise IngestionError(str(exc), 413) from exc
         except SpotifyResolutionError as exc:
             raise IngestionError(str(exc), 422) from exc
         return IngestedAudio(path=path, source_type="spotify", source_url=spotify_url, title=title)

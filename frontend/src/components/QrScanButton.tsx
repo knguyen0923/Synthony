@@ -27,6 +27,12 @@ export function QrScanButton({ onSuccess }: QrScanButtonProps) {
 
     const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID);
     scannerRef.current = scanner;
+    // html5-qrcode doesn't reliably release the camera if stop() is called
+    // before start() has actually resolved (e.g. the camera-permission
+    // prompt is still pending when this unmounts). Track whether start()
+    // has resolved yet so cleanup only calls stop() once it's safe to.
+    let cancelled = false;
+    let started = false;
 
     scanner
       .start(
@@ -46,10 +52,22 @@ export function QrScanButton({ onSuccess }: QrScanButtonProps) {
           // per-frame scan failure — ignored, scanning continues
         }
       )
+      .then(() => {
+        if (cancelled) {
+          // Unmounted while start() was pending — safe to stop now that it
+          // has actually finished starting.
+          scanner.stop().catch(() => {});
+        } else {
+          started = true;
+        }
+      })
       .catch(() => setError("Could not access the camera."));
 
     return () => {
-      scannerRef.current?.stop().catch(() => {});
+      cancelled = true;
+      if (started) {
+        scanner.stop().catch(() => {});
+      }
     };
   }, [scanning]);
 

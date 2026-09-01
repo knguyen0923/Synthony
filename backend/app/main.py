@@ -15,7 +15,7 @@ from app.transcription.audio_to_midi import transcribe_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
 from app.export import export_musicxml
-from app.storage import new_song_id, song_dir, write_metadata, STORAGE_ROOT
+from app.storage import new_song_id, song_dir, write_metadata, evict_oldest_songs, STORAGE_ROOT
 
 MAX_DURATION_SECONDS = 600  # 10 minutes
 
@@ -79,6 +79,7 @@ async def transcribe(
                     spotify_url=spotify_url,
                     spotify_client_id=SPOTIFY_CLIENT_ID,
                     spotify_client_secret=SPOTIFY_CLIENT_SECRET,
+                    max_duration_seconds=MAX_DURATION_SECONDS,
                 )
             except IngestionError as exc:
                 raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
@@ -103,6 +104,7 @@ async def transcribe(
             export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
 
         write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
+        evict_oldest_songs()
     except Exception:
         # song_dir() already created dest_dir before any of the above ran;
         # any failure past that point (a rejected upload, a duration-cap
