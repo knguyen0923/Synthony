@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+httpx
+basic-pitch
+music21
+librosa
+scipy
+numpy
+yt-dlp
+spotipy
+pytest
