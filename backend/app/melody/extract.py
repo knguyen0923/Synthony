@@ -1,4 +1,8 @@
+from music21 import stream
+
+from app.notation.hand_split import notes_to_part
 from app.notation.types import NoteEvent
+from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 
 def reduce_to_monophonic(notes: list[NoteEvent]) -> list[NoteEvent]:
@@ -15,3 +19,11 @@ def reduce_to_monophonic(notes: list[NoteEvent]) -> list[NoteEvent]:
         else:
             melody.append(candidate)
     return melody
+
+
+def extract_melody_part(audio_path: str) -> stream.Part:
+    """Run Basic Pitch on a (typically vocal-isolated) audio file and
+    reduce its output to a single melody line as an RH Part."""
+    notes = transcribe_audio_to_notes(audio_path)
+    melody_notes = reduce_to_monophonic(notes)
+    return notes_to_part(melody_notes, part_id="RH")
