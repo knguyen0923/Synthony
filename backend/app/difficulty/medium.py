@@ -1,8 +1,8 @@
 import copy
 
-from music21 import clef, stream
+from music21 import stream
 
-from app.notation.hand_split import get_hand_parts, build_grand_staff_score, get_title
+from app.notation.hand_split import carry_clef, get_hand_parts, build_grand_staff_score, get_title
 from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 
@@ -37,10 +37,7 @@ def _voice_chords_per_slot(lh_part: stream.Part, grid: float) -> stream.Part:
             new_element.duration.quarterLength = grid
             voiced.insert(slot, new_element)
 
-    # Preserve any clef from the input part
-    for c in lh_part.getElementsByClass(clef.Clef):
-        voiced.insert(0, copy.deepcopy(c))
-
+    carry_clef(lh_part, voiced)
     return voiced
 
 

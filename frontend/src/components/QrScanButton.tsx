@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import type { TranscribeResponse } from "../api/types";
+import { extractErrorMessage } from "../api/errors";
 
 interface QrScanButtonProps {
   onSuccess: (result: TranscribeResponse) => void;
@@ -9,14 +10,6 @@ interface QrScanButtonProps {
 }
 
 const SCANNER_ELEMENT_ID = "qr-scanner-region";
-
-function extractErrorMessage(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response
-    ?.data?.detail;
-  if (detail) return detail;
-  if (err instanceof Error) return err.message;
-  return "Couldn't process the scanned link.";
-}
 
 export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
   const [scanning, setScanning] = useState(false);
@@ -48,7 +41,7 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
             const result = await submitLink(decodedText, setStatusLabel);
             onSuccess(result);
           } catch (err) {
-            setError(extractErrorMessage(err));
+            setError(extractErrorMessage(err, "Couldn't process the scanned link."));
           } finally {
             setStatusLabel(null);
           }
@@ -74,6 +67,9 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
         scanner.stop().catch(() => {});
       }
     };
+    // onSuccess/submitLink are recreated every parent render; depending on
+    // them would restart the camera mid-scan whenever the parent re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanning]);
 
   return (

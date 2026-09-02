@@ -188,6 +188,14 @@ def get_title(score: stream.Score) -> Optional[str]:
     return score.metadata.title if score.metadata else None
 
 
+def carry_clef(source: stream.Part, dest: stream.Part) -> None:
+    """Copy any clef from source onto dest at offset 0 — used when a
+    difficulty tier derives a new Part from an existing one and needs to
+    keep its clef."""
+    for c in source.getElementsByClass(clef.Clef):
+        dest.insert(0, copy.deepcopy(c))
+
+
 def get_hand_parts(score: stream.Score) -> tuple[stream.Part, stream.Part]:
     rh = next(p for p in score.parts if p.id == "RH")
     lh = next(p for p in score.parts if p.id == "LH")

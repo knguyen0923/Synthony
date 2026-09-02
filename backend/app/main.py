@@ -72,6 +72,48 @@ class ArrangeSubmitResponse(BaseModel):
     status: str
 
 
+def _difficulty_links(song_id: str) -> dict[str, DifficultyLink]:
+    return {
+        tier: DifficultyLink(musicxml_url=f"/storage/{song_id}/{tier}.musicxml")
+        for tier in ("easy", "medium", "hard")
+    }
+
+
+async def _ingest_and_validate_duration(
+    dest_dir: Path,
+    audio_file: Optional[UploadFile],
+    youtube_url: Optional[str],
+    spotify_url: Optional[str],
+):
+    with tempfile.TemporaryDirectory() as tmp:
+        upload_tmp_path = None
+        upload_filename = None
+        if audio_file is not None:
+            upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
+            upload_tmp_path.write_bytes(await audio_file.read())
+            upload_filename = audio_file.filename
+
+        try:
+            ingested = ingest(
+                dest_dir,
+                uploaded_file_path=upload_tmp_path,
+                uploaded_filename=upload_filename,
+                youtube_url=youtube_url,
+                spotify_url=spotify_url,
+                spotify_client_id=SPOTIFY_CLIENT_ID,
+                spotify_client_secret=SPOTIFY_CLIENT_SECRET,
+                max_duration_seconds=MAX_DURATION_SECONDS,
+            )
+        except IngestionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    duration = librosa.get_duration(path=str(ingested.path))
+    if duration > MAX_DURATION_SECONDS:
+        raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
+
+    return ingested
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -90,10 +132,7 @@ def song(song_id: str) -> TranscribeResponse:
     return TranscribeResponse(
         song_id=song_id,
         title=metadata["title"],
-        difficulties={
-            tier: DifficultyLink(musicxml_url=f"/storage/{song_id}/{tier}.musicxml")
-            for tier in ("easy", "medium", "hard")
-        },
+        difficulties=_difficulty_links(song_id),
     )
 
 
@@ -114,31 +153,7 @@ async def transcribe(
     dest_dir = song_dir(song_id)
 
     try:
-        with tempfile.TemporaryDirectory() as tmp:
-            upload_tmp_path = None
-            upload_filename = None
-            if audio_file is not None:
-                upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
-                upload_tmp_path.write_bytes(await audio_file.read())
-                upload_filename = audio_file.filename
-
-            try:
-                ingested = ingest(
-                    dest_dir,
-                    uploaded_file_path=upload_tmp_path,
-                    uploaded_filename=upload_filename,
-                    youtube_url=youtube_url,
-                    spotify_url=spotify_url,
-                    spotify_client_id=SPOTIFY_CLIENT_ID,
-                    spotify_client_secret=SPOTIFY_CLIENT_SECRET,
-                    max_duration_seconds=MAX_DURATION_SECONDS,
-                )
-            except IngestionError as exc:
-                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-        duration = librosa.get_duration(path=str(ingested.path))
-        if duration > MAX_DURATION_SECONDS:
-            raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
+        ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
 
         notes = transcribe_audio_to_notes(str(ingested.path))
         if not notes:
@@ -169,10 +184,7 @@ async def transcribe(
     return TranscribeResponse(
         song_id=song_id,
         title=title,
-        difficulties={
-            tier: DifficultyLink(musicxml_url=f"/storage/{song_id}/{tier}.musicxml")
-            for tier in ("easy", "medium", "hard")
-        },
+        difficulties=_difficulty_links(song_id),
     )
 
 
@@ -187,31 +199,7 @@ async def arrange(
     dest_dir = song_dir(song_id)
 
     try:
-        with tempfile.TemporaryDirectory() as tmp:
-            upload_tmp_path = None
-            upload_filename = None
-            if audio_file is not None:
-                upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
-                upload_tmp_path.write_bytes(await audio_file.read())
-                upload_filename = audio_file.filename
-
-            try:
-                ingested = ingest(
-                    dest_dir,
-                    uploaded_file_path=upload_tmp_path,
-                    uploaded_filename=upload_filename,
-                    youtube_url=youtube_url,
-                    spotify_url=spotify_url,
-                    spotify_client_id=SPOTIFY_CLIENT_ID,
-                    spotify_client_secret=SPOTIFY_CLIENT_SECRET,
-                    max_duration_seconds=MAX_DURATION_SECONDS,
-                )
-            except IngestionError as exc:
-                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
-
-        duration = librosa.get_duration(path=str(ingested.path))
-        if duration > MAX_DURATION_SECONDS:
-            raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
+        ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
     except Exception:
         shutil.rmtree(dest_dir, ignore_errors=True)
         raise
