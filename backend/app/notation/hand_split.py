@@ -32,12 +32,10 @@ def _round_to_grid(value: float, grid: float) -> float:
     return round(value / grid) * grid
 
 
-def _to_music21_note(event: NoteEvent) -> note.Note:
+def _to_music21_note(event: NoteEvent, seconds_per_quarter: float = SECONDS_PER_QUARTER) -> note.Note:
     m21_note = note.Note()
     m21_note.pitch.midi = event.pitch
-    duration = _seconds_to_quarter_length(event.end - event.start)
-    # Apply minimum duration floor at grid resolution, then round to grid
-    # to ensure all durations are MusicXML-expressible.
+    duration = (event.end - event.start) / seconds_per_quarter
     duration = max(duration, NOTATION_GRID)
     m21_note.duration.quarterLength = _round_to_grid(duration, NOTATION_GRID)
     return m21_note
@@ -157,7 +155,7 @@ def notes_to_grand_staff(notes: list[NoteEvent], title: Optional[str] = None) ->
     return build_grand_staff_score(rh, lh, title=title)
 
 
-def notes_to_part(notes: list[NoteEvent], part_id: str = "RH") -> stream.Part:
+def notes_to_part(notes: list[NoteEvent], part_id: str = "RH", seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
     """Build a single-line Part from a flat list of NoteEvents, e.g. an
     already-reduced monophonic melody line. Unlike notes_to_grand_staff,
     this does no RH/LH splitting — every note goes into one Part, in
@@ -165,8 +163,8 @@ def notes_to_part(notes: list[NoteEvent], part_id: str = "RH") -> stream.Part:
     part = stream.Part(id=part_id)
     part.append(clef.TrebleClef())
     for event in sorted(notes, key=lambda e: e.start):
-        offset = _round_to_grid(_seconds_to_quarter_length(event.start), NOTATION_GRID)
-        part.insert(offset, _to_music21_note(event))
+        offset = _round_to_grid(event.start / seconds_per_quarter, NOTATION_GRID)
+        part.insert(offset, _to_music21_note(event, seconds_per_quarter))
     return part
 
 

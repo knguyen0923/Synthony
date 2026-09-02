@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from music21 import clef
 
 from app.notation.types import NoteEvent
-from app.notation.hand_split import notes_to_grand_staff, get_hand_parts, NOTATION_GRID
+from app.notation.hand_split import notes_to_grand_staff, get_hand_parts, notes_to_part, NOTATION_GRID
 from app.export import export_musicxml
 
 
@@ -196,6 +196,13 @@ def test_messy_offset_is_quantized_to_grid():
     rounded_offset = round(offset / NOTATION_GRID) * NOTATION_GRID
     assert abs(offset - rounded_offset) < 1e-10, \
         f"Offset {offset} is not on NOTATION_GRID {NOTATION_GRID}"
+
+
+def test_notes_to_part_respects_a_non_default_tempo():
+    notes = [NoteEvent(start=0.0, end=1.0, pitch=60)]
+    part = notes_to_part(notes, seconds_per_quarter=1.0)  # 60 BPM instead of the 120 BPM default
+    result_notes = list(part.flatten().notes)
+    assert result_notes[0].duration.quarterLength == 1.0  # 1s / 1.0s-per-quarter, vs 2.0 at the default tempo
 
 
 def test_score_with_messy_timing_exports_to_musicxml():

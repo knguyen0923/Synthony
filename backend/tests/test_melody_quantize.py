@@ -33,3 +33,16 @@ def test_quantize_melody_floors_the_last_note_to_one_grid_step():
     notes = [NoteEvent(start=0.0, end=0.02, pitch=60)]  # far shorter than a grid step, nothing after it
     result = quantize_melody(notes, QUARTER_GRID)
     assert result[0].end - result[0].start >= grid_seconds
+
+
+def test_quantize_melody_respects_a_non_default_tempo():
+    # At 1.0 seconds-per-quarter (60 BPM), a quarter-note grid slot is
+    # 1.0s wide instead of the default 0.5s — these two onsets land in
+    # different slots at the default tempo (round(0.3/0.5) = 1) but the
+    # same slot at this one (round(0.3/1.0) = 0).
+    notes = [
+        NoteEvent(start=0.0, end=0.1, pitch=60),
+        NoteEvent(start=0.3, end=0.4, pitch=62),
+    ]
+    result = quantize_melody(notes, QUARTER_GRID, seconds_per_quarter=1.0)
+    assert len(result) == 1

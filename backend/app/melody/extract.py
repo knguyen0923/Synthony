@@ -33,14 +33,15 @@ def extract_melody_notes(audio_path: str) -> list[NoteEvent]:
     return reduce_to_monophonic(notes)
 
 
-def quantize_melody(notes: list[NoteEvent], grid: float) -> list[NoteEvent]:
+def quantize_melody(notes: list[NoteEvent], grid: float, seconds_per_quarter: float = SECONDS_PER_QUARTER) -> list[NoteEvent]:
     """Snap note onsets to `grid` (in quarterLength units — 1.0 = quarter
-    note, 0.5 = eighth, etc.), drop duplicate re-attacks that land in the
-    same grid slot, and legato each kept note into the next one's onset so
-    the melody sustains instead of stopping short. The last note is
-    floored to at least one grid step, so it isn't left too short to
-    register when nothing follows it to legato into."""
-    grid_seconds = grid * SECONDS_PER_QUARTER
+    note, 0.5 = eighth, etc.) at the given tempo, drop duplicate
+    re-attacks that land in the same grid slot, and legato each kept note
+    into the next one's onset so the melody sustains instead of stopping
+    short. The last note is floored to at least one grid step, so it
+    isn't left too short to register when nothing follows it to legato
+    into."""
+    grid_seconds = grid * seconds_per_quarter
     ordered = sorted(notes, key=lambda n: n.start)
 
     kept: list[NoteEvent] = []
@@ -71,11 +72,8 @@ def quantize_melody(notes: list[NoteEvent], grid: float) -> list[NoteEvent]:
 CLEANUP_GRID = 0.25
 
 
-def build_melody_part(notes: list[NoteEvent]) -> stream.Part:
+def build_melody_part(notes: list[NoteEvent], seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
     """Clean up a reduced melody note list (legato, de-fragmented) and
     build the resulting RH Part. This is the full-detail base every
-    difficulty tier derives from — arrange_pipeline layers Spec 1's
-    quantize_part/shift_into_range on top for Easy/Medium so the right
-    hand actually gets harder as the tier increases, same as it already
-    does for Spec 1's own RH."""
-    return notes_to_part(quantize_melody(notes, CLEANUP_GRID), part_id="RH")
+    difficulty tier derives from."""
+    return notes_to_part(quantize_melody(notes, CLEANUP_GRID, seconds_per_quarter), part_id="RH", seconds_per_quarter=seconds_per_quarter)
