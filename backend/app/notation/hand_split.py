@@ -1,6 +1,7 @@
+import copy
 from typing import Optional
 
-from music21 import stream, note, clef, layout, metadata
+from music21 import stream, note, clef, layout, metadata, key, pitch
 
 from app.notation.types import NoteEvent
 
@@ -84,8 +85,15 @@ def _apply_dynamic_clef_changes(part: stream.Part, home_clef_cls, away_clef_cls,
             current_away = False
 
 
+def key_signature_from_tonic(tonic_pitch_class: int, mode: str) -> key.Key:
+    """Build a music21 Key (used as a key signature) from a detected
+    (tonic pitch class, mode) pair, e.g. from app.chords.key.detect_key."""
+    tonic_name = pitch.Pitch(midi=60 + tonic_pitch_class).name
+    return key.Key(tonic_name, mode)
+
+
 def build_grand_staff_score(
-    rh: stream.Part, lh: stream.Part, title: Optional[str] = None
+    rh: stream.Part, lh: stream.Part, title: Optional[str] = None, key_signature: Optional[key.Key] = None
 ) -> stream.Score:
     """Assemble RH/LH parts into a Score with a piano brace connecting them,
     so exported MusicXML renders as a single connected grand staff rather
@@ -107,6 +115,10 @@ def build_grand_staff_score(
     rh.style.printPartName = False
     lh.partName = "Left Hand"
     lh.style.printPartName = False
+
+    if key_signature is not None:
+        rh.insert(0, copy.deepcopy(key_signature))
+        lh.insert(0, copy.deepcopy(key_signature))
 
     _apply_dynamic_clef_changes(
         rh, clef.TrebleClef, clef.BassClef,

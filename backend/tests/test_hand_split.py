@@ -2,10 +2,17 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from music21 import clef
+from music21 import clef, note, stream
 
 from app.notation.types import NoteEvent
-from app.notation.hand_split import notes_to_grand_staff, get_hand_parts, notes_to_part, NOTATION_GRID
+from app.notation.hand_split import (
+    notes_to_grand_staff,
+    get_hand_parts,
+    notes_to_part,
+    NOTATION_GRID,
+    build_grand_staff_score,
+    key_signature_from_tonic,
+)
 from app.export import export_musicxml
 
 
@@ -235,3 +242,49 @@ def test_grand_staff_notes_carry_velocity_from_note_events():
     rh, _ = get_hand_parts(score)
     result_note = list(rh.flatten().notes)[0]
     assert result_note.volume.velocityScalar == pytest.approx(0.9)
+
+
+def test_key_signature_from_tonic_builds_g_major_one_sharp():
+    k = key_signature_from_tonic(7, "major")
+    assert k.tonic.name == "G"
+    assert k.mode == "major"
+    assert k.sharps == 1
+
+
+def test_key_signature_from_tonic_builds_f_major_one_flat():
+    k = key_signature_from_tonic(5, "major")
+    assert k.tonic.name == "F"
+    assert k.sharps == -1
+
+
+def test_grand_staff_applies_a_given_key_signature_to_the_exported_musicxml():
+    rh = stream.Part(id="RH")
+    rh.insert(0, note.Note("C5"))
+    lh = stream.Part(id="LH")
+    lh.insert(0, note.Note("C3"))
+    g_major = key_signature_from_tonic(7, "major")
+
+    score = build_grand_staff_score(rh, lh, key_signature=g_major)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_key_sig.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<fifths>1</fifths>" in xml
+
+
+def test_grand_staff_with_no_key_signature_given_stays_key_of_c():
+    rh = stream.Part(id="RH")
+    rh.insert(0, note.Note("C5"))
+    lh = stream.Part(id="LH")
+    lh.insert(0, note.Note("C3"))
+
+    score = build_grand_staff_score(rh, lh)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_no_key_sig.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<key>" not in xml
