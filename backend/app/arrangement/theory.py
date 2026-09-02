@@ -10,6 +10,15 @@ CHORD_INTERVALS: dict[str, tuple[int, ...]] = {
 }
 
 
+# A fixed, deterministic accent — not derived from any audio analysis,
+# since LH notes are synthesized from chord symbols and have no
+# per-note confidence data the way Basic Pitch's RH output does. Real
+# pianists voice the bass/root note more prominently than inner voices;
+# this is that rule, applied uniformly.
+ROOT_VELOCITY = 0.75
+INNER_VOICE_VELOCITY = 0.55
+
+
 def chord_tones(root: int, quality: str) -> list[int]:
     """Pitch classes (0-11), root first, that make up the chord."""
     return [(root + interval) % 12 for interval in CHORD_INTERVALS[quality]]

@@ -1,6 +1,6 @@
 from music21 import clef, note, stream
 
-from app.arrangement.theory import pitch_class_to_midi_in_range, quantized_duration, round_to_grid
+from app.arrangement.theory import ROOT_VELOCITY, pitch_class_to_midi_in_range, quantized_duration, round_to_grid
 from app.arrangement.types import ChordSymbol
 from app.notation.hand_split import SECONDS_PER_QUARTER
 
@@ -18,5 +18,6 @@ def to_easy_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS_P
         n = note.Note()
         n.pitch.midi = midi
         n.duration.quarterLength = length
+        n.volume.velocityScalar = ROOT_VELOCITY
         part.insert(offset, n)
     return part

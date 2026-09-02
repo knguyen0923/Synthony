@@ -1,4 +1,7 @@
+import pytest
+
 from app.arrangement.easy import to_easy_lh
+from app.arrangement.theory import ROOT_VELOCITY
 from app.arrangement.types import ChordSymbol
 
 
@@ -27,3 +30,10 @@ def test_easy_lh_respects_a_non_default_tempo():
     part = to_easy_lh(chords, seconds_per_quarter=1.0)  # 60 BPM instead of the 120 BPM default
     notes = list(part.flatten().notes)
     assert notes[0].duration.quarterLength == 2.0  # 2s / 1.0s-per-quarter, vs 4.0 at the default tempo
+
+
+def test_easy_lh_root_note_has_root_velocity():
+    chords = [ChordSymbol(start=0.0, duration=2.0, root=0, quality="major")]
+    part = to_easy_lh(chords)
+    n = list(part.flatten().notes)[0]
+    assert n.volume.velocityScalar == pytest.approx(ROOT_VELOCITY)

@@ -1,6 +1,8 @@
 from music21 import clef, note, stream
 
 from app.arrangement.theory import (
+    ROOT_VELOCITY,
+    INNER_VOICE_VELOCITY,
     chord_tones,
     pitch_class_to_midi_in_range,
     quantized_duration,
@@ -28,5 +30,6 @@ def to_medium_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS
             n = note.Note()
             n.pitch.midi = stack_above(root_midi, pitch_class)
             n.duration.quarterLength = length
+            n.volume.velocityScalar = ROOT_VELOCITY if pitch_class == tones[0] else INNER_VOICE_VELOCITY
             part.insert(offset, n)
     return part
