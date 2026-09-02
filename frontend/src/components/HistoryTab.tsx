@@ -13,6 +13,11 @@ const SOURCE_LABELS: Record<SongSummary["source_type"], string> = {
   upload: "Upload",
 };
 
+const PIPELINE_LABELS: Record<SongSummary["pipeline"], string> = {
+  transcribe: "Solo piano",
+  arrange: "Any song",
+};
+
 function formatDate(isoString: string): string {
   return new Date(isoString).toLocaleDateString(undefined, {
     year: "numeric",
@@ -26,12 +31,17 @@ export function HistoryTab({ onSelect }: HistoryTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     listSongs()
       .then(setSongs)
       .catch(() => setError("Couldn't load history."));
   }, []);
+
+  const filteredSongs = songs?.filter((song) =>
+    song.title.toLowerCase().includes(query.trim().toLowerCase())
+  );
 
   async function handleOpen(songId: string) {
     setError(null);
@@ -65,8 +75,21 @@ export function HistoryTab({ onSelect }: HistoryTabProps) {
       {songs === null && !error && <p className="history-tab__status">Loading…</p>}
       {songs?.length === 0 && <p className="history-tab__status">No songs transcribed yet.</p>}
       {songs && songs.length > 0 && (
+        <input
+          type="search"
+          className="history-tab__search"
+          placeholder="Search songs by title…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search songs by title"
+        />
+      )}
+      {filteredSongs?.length === 0 && songs && songs.length > 0 && (
+        <p className="history-tab__status">No songs match your search.</p>
+      )}
+      {filteredSongs && filteredSongs.length > 0 && (
         <ul className="history-tab__list">
-          {songs.map((song) => (
+          {filteredSongs.map((song) => (
             <li key={song.song_id} className="history-tab__row">
               <button
                 type="button"
@@ -76,6 +99,7 @@ export function HistoryTab({ onSelect }: HistoryTabProps) {
               >
                 <span className="history-tab__title">{song.title}</span>
                 <span className="history-tab__meta">
+                  <span className="history-tab__pipeline">{PIPELINE_LABELS[song.pipeline]}</span>
                   <span className="history-tab__source">{SOURCE_LABELS[song.source_type]}</span>
                   <span className="history-tab__date">{formatDate(song.created_at)}</span>
                 </span>

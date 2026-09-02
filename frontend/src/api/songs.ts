@@ -7,6 +7,7 @@ export interface SongSummary {
   title: string;
   source_type: "upload" | "youtube" | "spotify";
   source_url: string | null;
+  pipeline: "transcribe" | "arrange";
   created_at: string;
 }
 
