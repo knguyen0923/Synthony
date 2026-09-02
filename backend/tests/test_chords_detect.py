@@ -63,7 +63,7 @@ def test_merge_consecutive_combines_matching_adjacent_chords():
 
 
 def test_detect_chords_returns_a_sequence_and_tempo_covering_the_clip(synthetic_piano_wav):
-    chords, seconds_per_quarter = detect_chords(str(synthetic_piano_wav))
+    chords, seconds_per_quarter, key = detect_chords(str(synthetic_piano_wav))
 
     assert len(chords) >= 1
     assert chords[0].start == 0.0
@@ -72,6 +72,9 @@ def test_detect_chords_returns_a_sequence_and_tempo_covering_the_clip(synthetic_
         assert 0 <= chord.root <= 11
         assert chord.quality in ("major", "minor", "dim", "dom7", "maj7", "min7")
     assert seconds_per_quarter > 0
+    tonic, mode = key
+    assert 0 <= tonic <= 11
+    assert mode in ("major", "minor")
 
 
 def test_detect_chords_still_returns_a_sequence_and_tempo_with_key_bias_wired_in(synthetic_piano_wav):
@@ -80,6 +83,6 @@ def test_detect_chords_still_returns_a_sequence_and_tempo_with_key_bias_wired_in
     # tempo-covering test deliberately, as a belt-and-suspenders check
     # that detect_chords's key-detection call doesn't raise on real
     # audio input).
-    chords, seconds_per_quarter = detect_chords(str(synthetic_piano_wav))
+    chords, seconds_per_quarter, key = detect_chords(str(synthetic_piano_wav))
     assert len(chords) >= 1
     assert seconds_per_quarter > 0

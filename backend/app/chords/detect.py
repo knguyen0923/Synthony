@@ -29,7 +29,7 @@ def _tempo_to_seconds_per_quarter(tempo) -> float:
     return 60.0 / bpm
 
 
-def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float]:
+def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float, tuple[int, str]]:
     """Detect a chord-per-bar sequence from an audio file, along with the
     song's own detected tempo (as seconds-per-quarter-note) so callers can
     convert chord/melody timing using the song's real tempo instead of a
@@ -64,7 +64,7 @@ def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float]:
         raw_chords.append(ChordSymbol(start=float(start), duration=float(end - start), root=root, quality=quality))
 
     chords = _absorb_short_chords(_merge_consecutive(raw_chords))
-    return chords, seconds_per_quarter
+    return chords, seconds_per_quarter, key
 
 
 def _absorb_short_chords(chords: list[ChordSymbol], min_duration: float = MIN_CHORD_DURATION) -> list[ChordSymbol]:
