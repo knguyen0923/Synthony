@@ -1,5 +1,27 @@
 # Synthony — Spec 2: Any-Song Piano Arrangement
 
+## Status (updated 2026-09-02)
+
+Phases 0-4 are complete and merged into `spec-1-solo-piano-pipeline`
+(`POST /arrange` is live). Phase 5 (quality iteration by ear) is
+in progress. Phase 6 (broaden beyond pop/rock) hasn't started.
+
+**One decision below was reversed since this doc was written**: the
+Key Decisions Log's "Chord-symbol arrangement, not stem-transcription
+reuse" call — LH is no longer generated from detected chord symbols via
+a rule-based pattern engine. It's now a **real transcription** of the
+bass+other stem mix (Basic Pitch, same tool already used for RH melody),
+mirroring how RH always worked, with Easy/Medium mechanically simplified
+from that one rich transcription. See
+[`2026-09-02-lh-true-transcription-design.md`](2026-09-02-lh-true-transcription-design.md)
+for the full rationale and design — this doc's Architecture diagram,
+Goals' arrangement bullet, Phase 3, "Arrangement engine" component, and
+the API Contract's `detecting_chords` status string below are all
+superseded by it. Everything else in this doc (stem separation, melody
+extraction, async job infra, storage/frontend contract) still describes
+the current system accurately. The rest of this document is left as
+originally written, as the historical record of the original design.
+
 ## Context
 
 Spec 1 (v1.0) transcribes audio that already contains a solo piano
