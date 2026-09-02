@@ -1,10 +1,11 @@
+// frontend/src/components/QrScanButton.tsx
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { transcribeLink } from "../api/transcribe";
 import type { TranscribeResponse } from "../api/types";
 
 interface QrScanButtonProps {
   onSuccess: (result: TranscribeResponse) => void;
+  submitLink: (url: string, onProgress: (label: string) => void) => Promise<TranscribeResponse>;
 }
 
 const SCANNER_ELEMENT_ID = "qr-scanner-region";
@@ -14,11 +15,12 @@ function extractErrorMessage(err: unknown): string {
     ?.data?.detail;
   if (detail) return detail;
   if (err instanceof Error) return err.message;
-  return "Couldn't transcribe the scanned link.";
+  return "Couldn't process the scanned link.";
 }
 
-export function QrScanButton({ onSuccess }: QrScanButtonProps) {
+export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
   const [scanning, setScanning] = useState(false);
+  const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
@@ -41,11 +43,14 @@ export function QrScanButton({ onSuccess }: QrScanButtonProps) {
         async (decodedText) => {
           await scanner.stop();
           setScanning(false);
+          setStatusLabel("Working…");
           try {
-            const result = await transcribeLink(decodedText);
+            const result = await submitLink(decodedText, setStatusLabel);
             onSuccess(result);
           } catch (err) {
             setError(extractErrorMessage(err));
+          } finally {
+            setStatusLabel(null);
           }
         },
         () => {
@@ -78,6 +83,7 @@ export function QrScanButton({ onSuccess }: QrScanButtonProps) {
         Scan QR code
       </button>
       {scanning && <div id={SCANNER_ELEMENT_ID} className="qr-scan-button__region" />}
+      {statusLabel && <p className="upload-form__status">{statusLabel}</p>}
       {error && (
         <p className="upload-form__error" role="alert">
           {error}
