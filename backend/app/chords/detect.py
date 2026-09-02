@@ -2,6 +2,7 @@ import librosa
 import numpy as np
 
 from app.arrangement.types import ChordSymbol
+from app.chords.key import detect_key
 from app.chords.match import match_chord
 
 BEATS_PER_BAR = 4  # assumes 4/4 time — a fixed-grid simplification, same
@@ -39,6 +40,7 @@ def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float]:
     duration = len(y) / sr
 
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    key = detect_key(chroma)
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
     seconds_per_quarter = _tempo_to_seconds_per_quarter(tempo)
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
@@ -58,7 +60,7 @@ def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float]:
         if not np.any(in_bar):
             continue
         bar_chroma = chroma[:, in_bar].mean(axis=1)
-        root, quality = match_chord(bar_chroma)
+        root, quality = match_chord(bar_chroma, key=key)
         raw_chords.append(ChordSymbol(start=float(start), duration=float(end - start), root=root, quality=quality))
 
     chords = _absorb_short_chords(_merge_consecutive(raw_chords))

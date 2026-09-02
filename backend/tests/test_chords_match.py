@@ -29,3 +29,19 @@ def test_match_chord_distinguishes_major_seventh_from_dominant_seventh():
     for pitch_class in (0, 4, 7, 11):  # C major 7th: C E G B
         chroma[pitch_class] = 1.0
     assert match_chord(chroma) == (0, "maj7")
+
+
+def test_match_chord_accepts_an_optional_key_without_changing_a_clear_match():
+    chroma = np.zeros(12)
+    for pitch_class in (0, 4, 7):
+        chroma[pitch_class] = 1.0
+    # A key where C major isn't even diatonic shouldn't override an
+    # unambiguous, exact chroma match.
+    assert match_chord(chroma, key=(6, "major")) == (0, "major")
+
+
+def test_match_chord_key_bias_does_not_break_the_no_key_default():
+    chroma = np.zeros(12)
+    for pitch_class in (9, 0, 4):
+        chroma[pitch_class] = 1.0
+    assert match_chord(chroma) == (9, "minor")

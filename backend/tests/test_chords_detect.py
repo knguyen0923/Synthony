@@ -72,3 +72,14 @@ def test_detect_chords_returns_a_sequence_and_tempo_covering_the_clip(synthetic_
         assert 0 <= chord.root <= 11
         assert chord.quality in ("major", "minor", "dim", "dom7", "maj7", "min7")
     assert seconds_per_quarter > 0
+
+
+def test_detect_chords_still_returns_a_sequence_and_tempo_with_key_bias_wired_in(synthetic_piano_wav):
+    # Regression check: wiring in key detection must not break the
+    # existing contract (this duplicates the shape of the existing
+    # tempo-covering test deliberately, as a belt-and-suspenders check
+    # that detect_chords's key-detection call doesn't raise on real
+    # audio input).
+    chords, seconds_per_quarter = detect_chords(str(synthetic_piano_wav))
+    assert len(chords) >= 1
+    assert seconds_per_quarter > 0
