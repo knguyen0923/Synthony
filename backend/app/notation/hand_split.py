@@ -157,6 +157,19 @@ def notes_to_grand_staff(notes: list[NoteEvent], title: Optional[str] = None) ->
     return build_grand_staff_score(rh, lh, title=title)
 
 
+def notes_to_part(notes: list[NoteEvent], part_id: str = "RH") -> stream.Part:
+    """Build a single-line Part from a flat list of NoteEvents, e.g. an
+    already-reduced monophonic melody line. Unlike notes_to_grand_staff,
+    this does no RH/LH splitting — every note goes into one Part, in
+    onset order."""
+    part = stream.Part(id=part_id)
+    part.append(clef.TrebleClef())
+    for event in sorted(notes, key=lambda e: e.start):
+        offset = _round_to_grid(_seconds_to_quarter_length(event.start), NOTATION_GRID)
+        part.insert(offset, _to_music21_note(event))
+    return part
+
+
 def get_title(score: stream.Score) -> Optional[str]:
     """Read back the title set by build_grand_staff_score(), so a difficulty
     tier that builds a fresh Score from its own RH/LH parts can carry the
