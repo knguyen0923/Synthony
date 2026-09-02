@@ -5,18 +5,20 @@ from typing import Optional
 import numpy as np
 from scipy.io import wavfile
 
-from app.arrangement.engine import generate_lh_variants
-from app.chords.detect import detect_chords
-from app.difficulty.easy import EASY_GRID, EASY_RH_RANGE
-from app.difficulty.medium import MEDIUM_GRID, MEDIUM_RH_RANGE
+from app.chords.detect import detect_key_and_tempo
+from app.difficulty.easy import EASY_GRID, EASY_LH_RANGE, EASY_RH_RANGE
+from app.difficulty.medium import MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
 from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
+from app.lh.extract import build_lh_part, extract_lh_notes
 from app.melody.extract import build_melody_part, extract_melody_notes
 from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score, key_signature_from_tonic
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
+
+MEDIUM_LH_MAX_VOICES = 3  # matches the previous arrangement/medium.py's MAX_BLOCK_TONES
 
 
 def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER):
@@ -34,10 +36,27 @@ def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER)
     }
 
 
+def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER):
+    """Build the three difficulty tiers' LH Parts from one real
+    transcription of the harmony audio — same shape as _rh_variants:
+    Easy/Medium derive from the Hard base via quantize_part(max_voices)
+    (thinning both note density and simultaneous-voice count) and
+    shift_into_range; Hard is the transcription itself, unmodified."""
+    notes = extract_lh_notes(harmony_path)
+    if not notes:
+        raise ValueError("No harmonic content detected")
+    base = build_lh_part(notes, seconds_per_quarter)
+    return {
+        "easy": shift_into_range(quantize_part(base, EASY_GRID, max_voices=1), *EASY_LH_RANGE),
+        "medium": shift_into_range(quantize_part(base, MEDIUM_GRID, max_voices=MEDIUM_LH_MAX_VOICES), *MEDIUM_LH_RANGE),
+        "hard": base,
+    }
+
+
 def mix_wav_files(path_a: Path, path_b: Path, dest: Path) -> Path:
     """Sum two WAV files sample-for-sample into dest, normalizing to avoid
     clipping. Used to combine the bass+other stems into a single harmony
-    signal for chord detection."""
+    signal for LH transcription and key/tempo detection."""
     rate_a, audio_a = wavfile.read(str(path_a))
     _rate_b, audio_b = wavfile.read(str(path_b))
 
@@ -67,20 +86,18 @@ def run_arrange_pipeline(
         set_status(job_id, "extracting_melody")
         melody_notes = extract_melody_notes(str(stems.vocals))
 
-        set_status(job_id, "detecting_chords")
+        set_status(job_id, "detecting_key")
         harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
-        chords, seconds_per_quarter, detected_key = detect_chords(str(harmony_path))
-        if not chords:
-            raise ValueError("No chords detected")
+        detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
 
         set_status(job_id, "arranging")
-        variants = generate_lh_variants(chords, seconds_per_quarter)
+        lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter)
         rh_variants = _rh_variants(melody_notes, seconds_per_quarter)
 
         difficulties = {}
         key_signature = key_signature_from_tonic(*detected_key)
-        for tier, lh_part in (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard)):
-            score = build_grand_staff_score(rh_variants[tier], lh_part, title=title, key_signature=key_signature)
+        for tier in ("easy", "medium", "hard"):
+            score = build_grand_staff_score(rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature)
             export_musicxml(score, dest_dir / f"{tier}.musicxml")
             difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 

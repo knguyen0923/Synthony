@@ -4,12 +4,12 @@ import type { TranscribeResponse } from "./types";
 import { API_BASE_URL } from "./config";
 import { classifyLink } from "./transcribe";
 
-type ArrangeStage = "separating" | "extracting_melody" | "detecting_chords" | "arranging";
+type ArrangeStage = "separating" | "extracting_melody" | "detecting_key" | "arranging";
 
 const STAGE_LABELS: Record<ArrangeStage, string> = {
   separating: "Separating vocals and instruments…",
   extracting_melody: "Extracting the melody…",
-  detecting_chords: "Detecting chords…",
+  detecting_key: "Detecting the key…",
   arranging: "Arranging the accompaniment…",
 };
 
