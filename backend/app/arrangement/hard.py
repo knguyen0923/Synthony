@@ -1,6 +1,6 @@
 from music21 import clef, note, stream
 
-from app.arrangement.theory import chord_tones, pitch_class_to_midi_in_range, stack_above
+from app.arrangement.theory import chord_tones, pitch_class_to_midi_in_range, round_to_grid, stack_above
 from app.arrangement.types import ChordSymbol
 from app.notation.hand_split import SECONDS_PER_QUARTER
 
@@ -28,7 +28,7 @@ def to_hard_lh(chords: list[ChordSymbol]) -> stream.Part:
         while elapsed < chord.duration:
             index = ALBERTI_INDICES[step % len(ALBERTI_INDICES)] % len(tones)
             pitch_class = tones[index]
-            offset = (chord.start + elapsed) / SECONDS_PER_QUARTER
+            offset = round_to_grid((chord.start + elapsed) / SECONDS_PER_QUARTER)
 
             n = note.Note()
             n.pitch.midi = stack_above(root_midi, pitch_class)

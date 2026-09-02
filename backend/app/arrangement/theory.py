@@ -1,3 +1,5 @@
+from app.notation.hand_split import NOTATION_GRID
+
 CHORD_INTERVALS: dict[str, tuple[int, ...]] = {
     "major": (0, 4, 7),
     "minor": (0, 3, 7),
@@ -31,3 +33,20 @@ def stack_above(base_midi: int, pitch_class: int) -> int:
     while midi < base_midi:
         midi += 12
     return midi
+
+
+def round_to_grid(value: float) -> float:
+    """Round a value (in quarterLength units) to the nearest NOTATION_GRID
+    step. Chord timings come from real beat-tracking — irregular floats
+    like 1.869206349206349s — and without this, the quarterLength values
+    derived from them (e.g. 256/3675) aren't expressible in MusicXML,
+    which requires app.notation.hand_split's same grid constraint."""
+    return round(value / NOTATION_GRID) * NOTATION_GRID
+
+
+def quantized_duration(seconds: float, seconds_per_quarter: float) -> float:
+    """Convert a duration in seconds to a MusicXML-safe quarterLength:
+    floored at one grid step (never zero-length) and rounded to the
+    grid."""
+    quarter_length = max(seconds / seconds_per_quarter, NOTATION_GRID)
+    return round_to_grid(quarter_length)
