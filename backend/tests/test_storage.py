@@ -52,6 +52,28 @@ def test_write_metadata_writes_expected_json_fields():
     assert "created_at" in metadata
 
 
+def test_write_metadata_defaults_pipeline_to_transcribe():
+    song_id = new_song_id()
+    song_dir(song_id)
+
+    write_metadata(song_id, title="My Song", source_type="upload", source_url=None)
+
+    metadata_path = STORAGE_ROOT / song_id / "metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["pipeline"] == "transcribe"
+
+
+def test_write_metadata_records_arrange_pipeline_when_specified():
+    song_id = new_song_id()
+    song_dir(song_id)
+
+    write_metadata(song_id, title="My Song", source_type="upload", source_url=None, pipeline="arrange")
+
+    metadata_path = STORAGE_ROOT / song_id / "metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["pipeline"] == "arrange"
+
+
 def test_evict_oldest_songs_does_nothing_when_under_limit():
     ids = [_make_song(f"Song {i}", f"2026-01-0{i}T00:00:00+00:00") for i in range(1, 4)]
 

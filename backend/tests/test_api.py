@@ -182,6 +182,19 @@ def test_get_song_returns_404_for_unknown_id():
     assert response.status_code == 404
 
 
+def test_songs_listing_includes_pipeline_field(synthetic_piano_wav):
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post(
+            "/transcribe",
+            files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+        )
+    song_id = response.json()["song_id"]
+
+    listing = client.get("/songs").json()
+    entry = next(s for s in listing if s["song_id"] == song_id)
+    assert entry["pipeline"] == "transcribe"
+
+
 def test_delete_song_removes_it_from_storage_and_listing(synthetic_piano_wav):
     with open(synthetic_piano_wav, "rb") as f:
         transcribe_response = client.post(

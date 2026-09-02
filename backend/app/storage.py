@@ -23,11 +23,12 @@ def song_dir(song_id: str) -> Path:
     return path
 
 
-def write_metadata(song_id: str, title: str, source_type: str, source_url: Optional[str]) -> None:
+def write_metadata(song_id: str, title: str, source_type: str, source_url: Optional[str], pipeline: str = "transcribe") -> None:
     metadata = {
         "title": title,
         "source_type": source_type,
         "source_url": source_url,
+        "pipeline": pipeline,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     (song_dir(song_id) / "metadata.json").write_text(json.dumps(metadata, indent=2))

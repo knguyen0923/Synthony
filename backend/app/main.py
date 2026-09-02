@@ -61,6 +61,7 @@ class SongSummary(BaseModel):
     title: str
     source_type: str
     source_url: Optional[str]
+    pipeline: str = "transcribe"
     created_at: str
 
 
