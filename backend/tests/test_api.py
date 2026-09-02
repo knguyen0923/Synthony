@@ -254,3 +254,82 @@ def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypat
         for f in d.rglob("*"):
             assert d in f.parents or f == d
     assert not Path("/etc/passwant.wav").exists()
+
+
+import time
+
+from app.arrangement.types import ChordSymbol
+from app.separation.types import Stems
+
+
+def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch, synthetic_piano_wav):
+    import app.arrange_pipeline as pipeline_module
+    from music21 import note, stream
+
+    fake_rh = stream.Part(id="RH")
+    fake_rh.insert(0, note.Note("C5"))
+
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=Path("/fake/vocals.wav"), drums=Path("/fake/drums.wav"),
+            bass=Path("/fake/bass.wav"), other=Path("/fake/other.wav"),
+        ),
+    )
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    monkeypatch.setattr(pipeline_module, "extract_melody_part", lambda audio_path: fake_rh)
+    monkeypatch.setattr(
+        pipeline_module, "detect_chords",
+        lambda audio_path: [ChordSymbol(start=0.0, duration=1.0, root=0, quality="major")],
+    )
+
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post("/arrange", files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")})
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "processing"
+    job_id = body["job_id"]
+
+    result = None
+    for _ in range(50):
+        payload = client.get(f"/arrange/{job_id}").json()
+        if "song_id" in payload or payload.get("status") == "failed":
+            result = payload
+            break
+        time.sleep(0.05)
+
+    assert result is not None, "job did not complete in time"
+    assert set(result["difficulties"].keys()) == {"easy", "medium", "hard"}
+    song_id = result["song_id"]
+    for tier in ("easy", "medium", "hard"):
+        assert (STORAGE_ROOT / song_id / f"{tier}.musicxml").exists()
+
+
+def test_arrange_job_failure_sets_failed_status_with_detail(monkeypatch, synthetic_piano_wav):
+    import app.arrange_pipeline as pipeline_module
+
+    def boom(audio_path, output_dir):
+        raise RuntimeError("separation blew up")
+
+    monkeypatch.setattr(pipeline_module, "separate_stems", boom)
+
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post("/arrange", files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")})
+    job_id = response.json()["job_id"]
+
+    result = None
+    for _ in range(50):
+        payload = client.get(f"/arrange/{job_id}").json()
+        if "song_id" in payload or payload.get("status") == "failed":
+            result = payload
+            break
+        time.sleep(0.05)
+
+    assert result == {"status": "failed", "detail": "separation blew up"}
+    assert not any(STORAGE_ROOT.iterdir())
+
+
+def test_arrange_status_returns_404_for_unknown_job():
+    response = client.get("/arrange/does-not-exist")
+    assert response.status_code == 404

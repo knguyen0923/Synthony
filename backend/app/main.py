@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 import librosa
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app.arrange_pipeline import run_arrange_pipeline
+from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
 from app.transcription.audio_to_midi import transcribe_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
@@ -63,6 +65,11 @@ class SongSummary(BaseModel):
     source_url: Optional[str]
     pipeline: str = "transcribe"
     created_at: str
+
+
+class ArrangeSubmitResponse(BaseModel):
+    job_id: str
+    status: str
 
 
 @app.get("/health")
@@ -167,3 +174,69 @@ async def transcribe(
             for tier in ("easy", "medium", "hard")
         },
     )
+
+
+@app.post("/arrange", response_model=ArrangeSubmitResponse, status_code=202)
+async def arrange(
+    background_tasks: BackgroundTasks,
+    audio_file: Optional[UploadFile] = File(None),
+    youtube_url: Optional[str] = Form(None),
+    spotify_url: Optional[str] = Form(None),
+) -> ArrangeSubmitResponse:
+    song_id = new_song_id()
+    dest_dir = song_dir(song_id)
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            upload_tmp_path = None
+            upload_filename = None
+            if audio_file is not None:
+                upload_tmp_path = Path(tmp) / Path(audio_file.filename or "upload").name
+                upload_tmp_path.write_bytes(await audio_file.read())
+                upload_filename = audio_file.filename
+
+            try:
+                ingested = ingest(
+                    dest_dir,
+                    uploaded_file_path=upload_tmp_path,
+                    uploaded_filename=upload_filename,
+                    youtube_url=youtube_url,
+                    spotify_url=spotify_url,
+                    spotify_client_id=SPOTIFY_CLIENT_ID,
+                    spotify_client_secret=SPOTIFY_CLIENT_SECRET,
+                    max_duration_seconds=MAX_DURATION_SECONDS,
+                )
+            except IngestionError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+        duration = librosa.get_duration(path=str(ingested.path))
+        if duration > MAX_DURATION_SECONDS:
+            raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
+    except Exception:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
+
+    job_id = create_job()
+    background_tasks.add_task(
+        run_arrange_pipeline,
+        job_id=job_id,
+        audio_path=str(ingested.path),
+        title=ingested.title,
+        source_type=ingested.source_type,
+        source_url=ingested.source_url,
+        song_id=song_id,
+        dest_dir=dest_dir,
+    )
+    return ArrangeSubmitResponse(job_id=job_id, status="processing")
+
+
+@app.get("/arrange/{job_id}")
+def arrange_status(job_id: str) -> dict:
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status == "done":
+        return job.result
+    if job.status == "failed":
+        return {"status": "failed", "detail": job.detail}
+    return {"status": job.status}
