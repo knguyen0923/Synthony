@@ -7,6 +7,10 @@ from app.chords.match import match_chord
 BEATS_PER_BAR = 4  # assumes 4/4 time — a fixed-grid simplification, same
                     # spirit as the rest of this codebase's fixed-tempo
                     # assumptions
+MIN_CHORD_DURATION = 2.0  # seconds — a detected chord shorter than this is
+                            # treated as a bar-detection/chroma-noise blip
+                            # and absorbed into its neighbor, rather than
+                            # letting the LH re-trigger on every one
 
 
 def detect_chords(audio_path: str) -> list[ChordSymbol]:
@@ -39,7 +43,41 @@ def detect_chords(audio_path: str) -> list[ChordSymbol]:
         root, quality = match_chord(bar_chroma)
         raw_chords.append(ChordSymbol(start=float(start), duration=float(end - start), root=root, quality=quality))
 
-    return _merge_consecutive(raw_chords)
+    return _absorb_short_chords(_merge_consecutive(raw_chords))
+
+
+def _absorb_short_chords(chords: list[ChordSymbol], min_duration: float = MIN_CHORD_DURATION) -> list[ChordSymbol]:
+    """Merge any chord shorter than min_duration into its neighbor —
+    absorbed into the previous chord where one exists, otherwise into the
+    next one — then re-merge so a newly-adjacent identical pair collapses
+    into one."""
+    if not chords:
+        return []
+
+    result = [chords[0]]
+    for chord in chords[1:]:
+        if chord.duration < min_duration:
+            last = result[-1]
+            result[-1] = ChordSymbol(
+                start=last.start,
+                duration=last.duration + chord.duration,
+                root=last.root,
+                quality=last.quality,
+            )
+        else:
+            result.append(chord)
+
+    if len(result) > 1 and result[0].duration < min_duration:
+        leading, following = result[0], result[1]
+        result[1] = ChordSymbol(
+            start=leading.start,
+            duration=leading.duration + following.duration,
+            root=following.root,
+            quality=following.quality,
+        )
+        result.pop(0)
+
+    return _merge_consecutive(result)
 
 
 def _merge_consecutive(chords: list[ChordSymbol]) -> list[ChordSymbol]:

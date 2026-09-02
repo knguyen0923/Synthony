@@ -259,15 +259,14 @@ def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypat
 import time
 
 from app.arrangement.types import ChordSymbol
+from app.notation.types import NoteEvent
 from app.separation.types import Stems
 
 
 def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch, synthetic_piano_wav):
     import app.arrange_pipeline as pipeline_module
-    from music21 import note, stream
 
-    fake_rh = stream.Part(id="RH")
-    fake_rh.insert(0, note.Note("C5"))
+    fake_notes = [NoteEvent(start=0.0, end=0.5, pitch=72)]
 
     monkeypatch.setattr(
         pipeline_module, "separate_stems",
@@ -277,7 +276,7 @@ def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch
         ),
     )
     monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
-    monkeypatch.setattr(pipeline_module, "extract_melody_part", lambda audio_path: fake_rh)
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: fake_notes)
     monkeypatch.setattr(
         pipeline_module, "detect_chords",
         lambda audio_path: [ChordSymbol(start=0.0, duration=1.0, root=0, quality="major")],

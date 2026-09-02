@@ -1,4 +1,3 @@
-import copy
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -10,10 +9,17 @@ from app.arrangement.engine import generate_lh_variants
 from app.chords.detect import detect_chords
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
-from app.melody.extract import extract_melody_part
+from app.melody.extract import extract_melody_notes, melody_part_for_tier
 from app.notation.hand_split import build_grand_staff_score
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
+
+# Right-hand quantization grid per tier, in quarterLength units — mirrors
+# the difficulty engine's philosophy (Spec 1's easy.py/medium.py narrow
+# the RH; Spec 2 lacks that engine's grid input, so this narrows melody
+# rhythm directly instead) so the right hand actually gets harder to play
+# as the tier increases, instead of being identical across all three.
+MELODY_GRID_BY_TIER = {"easy": 1.0, "medium": 0.5, "hard": 0.25}
 
 
 def mix_wav_files(path_a: Path, path_b: Path, dest: Path) -> Path:
@@ -47,7 +53,7 @@ def run_arrange_pipeline(
         stems = separate_stems(audio_path, dest_dir / "stems")
 
         set_status(job_id, "extracting_melody")
-        rh = extract_melody_part(str(stems.vocals))
+        melody_notes = extract_melody_notes(str(stems.vocals))
 
         set_status(job_id, "detecting_chords")
         harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
@@ -60,7 +66,8 @@ def run_arrange_pipeline(
 
         difficulties = {}
         for tier, lh_part in (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard)):
-            score = build_grand_staff_score(copy.deepcopy(rh), lh_part, title=title)
+            rh_part = melody_part_for_tier(melody_notes, MELODY_GRID_BY_TIER[tier])
+            score = build_grand_staff_score(rh_part, lh_part, title=title)
             export_musicxml(score, dest_dir / f"{tier}.musicxml")
             difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 

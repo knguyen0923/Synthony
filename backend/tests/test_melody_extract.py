@@ -26,13 +26,12 @@ def test_reduce_to_monophonic_discards_lower_pitch_overlapping_note():
     assert reduce_to_monophonic(notes) == [notes[0]]
 
 
-from app.melody.extract import extract_melody_part
+from app.melody.extract import extract_melody_notes
 
 
-def test_extract_melody_part_detects_note_near_a4(synthetic_piano_wav):
-    part = extract_melody_part(str(synthetic_piano_wav))
-    notes = list(part.flatten().notes)
+def test_extract_melody_notes_detects_note_near_a4(synthetic_piano_wav):
+    notes = extract_melody_notes(str(synthetic_piano_wav))
 
     assert len(notes) >= 1
-    pitches = [n.pitch.midi for n in notes]
+    pitches = [n.pitch for n in notes]
     assert any(abs(p - 69) <= 2 for p in pitches)  # A4 = MIDI 69, +/-2 semitone tolerance
