@@ -5,6 +5,7 @@ httpx
 basic-pitch[onnx]
 music21
 librosa
+demucs
 scipy
 numpy
 yt-dlp
