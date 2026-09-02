@@ -1,5 +1,25 @@
 from app.arrangement.types import ChordSymbol
-from app.chords.detect import _absorb_short_chords, _merge_consecutive, detect_chords
+from app.chords.detect import (
+    _absorb_short_chords,
+    _merge_consecutive,
+    _tempo_to_seconds_per_quarter,
+    detect_chords,
+)
+
+
+def test_tempo_to_seconds_per_quarter_converts_bpm():
+    assert _tempo_to_seconds_per_quarter(120.0) == 0.5
+    assert _tempo_to_seconds_per_quarter(60.0) == 1.0
+
+
+def test_tempo_to_seconds_per_quarter_clamps_extreme_values():
+    assert _tempo_to_seconds_per_quarter(20.0) == 60.0 / 60.0   # clamped up to MIN_TEMPO_BPM
+    assert _tempo_to_seconds_per_quarter(500.0) == 60.0 / 200.0  # clamped down to MAX_TEMPO_BPM
+
+
+def test_tempo_to_seconds_per_quarter_falls_back_on_zero_or_none():
+    assert _tempo_to_seconds_per_quarter(0.0) == 0.5
+    assert _tempo_to_seconds_per_quarter(None) == 0.5
 
 
 def test_absorb_short_chords_merges_a_short_chord_into_the_previous_one():
@@ -42,8 +62,8 @@ def test_merge_consecutive_combines_matching_adjacent_chords():
     ]
 
 
-def test_detect_chords_returns_a_sequence_covering_the_clip(synthetic_piano_wav):
-    chords = detect_chords(str(synthetic_piano_wav))
+def test_detect_chords_returns_a_sequence_and_tempo_covering_the_clip(synthetic_piano_wav):
+    chords, seconds_per_quarter = detect_chords(str(synthetic_piano_wav))
 
     assert len(chords) >= 1
     assert chords[0].start == 0.0
@@ -51,3 +71,4 @@ def test_detect_chords_returns_a_sequence_covering_the_clip(synthetic_piano_wav)
     for chord in chords:
         assert 0 <= chord.root <= 11
         assert chord.quality in ("major", "minor", "dim", "dom7", "maj7", "min7")
+    assert seconds_per_quarter > 0
