@@ -1,13 +1,13 @@
 import pytest
 
-from app.arrangement.hard import _short_chord_threshold, to_hard_lh
-from app.arrangement.theory import ROOT_VELOCITY, INNER_VOICE_VELOCITY
+from app.arrangement.hard import to_hard_lh
+from app.arrangement.theory import ROOT_VELOCITY, INNER_VOICE_VELOCITY, short_chord_threshold
 from app.arrangement.types import ChordSymbol
 
 
 def test_short_chord_threshold_is_one_and_a_half_bars_at_the_given_tempo():
     seconds_per_quarter = 0.5
-    assert _short_chord_threshold(seconds_per_quarter) == pytest.approx(6.0 * 0.5)
+    assert short_chord_threshold(seconds_per_quarter) == pytest.approx(6.0 * 0.5)
 
 
 def test_short_chord_threshold_scales_with_tempo():
@@ -19,8 +19,8 @@ def test_short_chord_threshold_scales_with_tempo():
     # and 2-bar chords purely by coincidence. A tempo-relative threshold
     # must scale so the split reflects a consistent musical distinction
     # (roughly "under vs. over 1.5 bars") regardless of tempo.
-    fast_tempo = _short_chord_threshold(60.0 / 129.2)   # a real detected tempo
-    slow_tempo = _short_chord_threshold(60.0 / 73.8)     # a real detected tempo
+    fast_tempo = short_chord_threshold(60.0 / 129.2)   # a real detected tempo
+    slow_tempo = short_chord_threshold(60.0 / 73.8)     # a real detected tempo
     assert slow_tempo > fast_tempo
 
 
