@@ -35,6 +35,7 @@ def _round_to_grid(value: float, grid: float) -> float:
 def _to_music21_note(event: NoteEvent, seconds_per_quarter: float = SECONDS_PER_QUARTER) -> note.Note:
     m21_note = note.Note()
     m21_note.pitch.midi = event.pitch
+    m21_note.volume.velocityScalar = event.velocity
     duration = (event.end - event.start) / seconds_per_quarter
     duration = max(duration, NOTATION_GRID)
     m21_note.duration.quarterLength = _round_to_grid(duration, NOTATION_GRID)

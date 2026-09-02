@@ -1,4 +1,7 @@
+import pytest
+
 from app.arrangement.hard import to_hard_lh
+from app.arrangement.theory import ROOT_VELOCITY, INNER_VOICE_VELOCITY
 from app.arrangement.types import ChordSymbol
 
 
@@ -52,3 +55,25 @@ def test_hard_lh_arpeggio_step_offsets_respect_a_non_default_tempo():
     part = to_hard_lh(chords, seconds_per_quarter=1.0)
     notes = sorted(part.flatten().notes, key=lambda n: n.offset)
     assert len(notes) == 8
+
+
+def test_hard_lh_accents_the_root_step_in_the_arpeggio():
+    chords = [ChordSymbol(start=0.0, duration=3.0, root=0, quality="major")]
+    part = to_hard_lh(chords)
+    notes = sorted(part.flatten().notes, key=lambda n: n.offset)
+    velocities = [n.volume.velocityScalar for n in notes[:4]]
+    assert velocities == [
+        pytest.approx(ROOT_VELOCITY),
+        pytest.approx(INNER_VOICE_VELOCITY),
+        pytest.approx(INNER_VOICE_VELOCITY),
+        pytest.approx(INNER_VOICE_VELOCITY),
+    ]
+
+
+def test_hard_lh_accents_the_root_in_a_short_chords_block_chord():
+    chords = [ChordSymbol(start=0.0, duration=0.5, root=0, quality="major")]
+    part = to_hard_lh(chords)
+    velocities = {n.pitch.midi: n.volume.velocityScalar for n in part.flatten().notes}
+    assert velocities[36] == pytest.approx(ROOT_VELOCITY)
+    assert velocities[40] == pytest.approx(INNER_VOICE_VELOCITY)
+    assert velocities[43] == pytest.approx(INNER_VOICE_VELOCITY)

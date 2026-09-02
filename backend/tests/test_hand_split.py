@@ -220,3 +220,18 @@ def test_score_with_messy_timing_exports_to_musicxml():
         # This should not raise MusicXMLExportException
         result = export_musicxml(score, output_path)
         assert result.exists(), "MusicXML export failed or file not created"
+
+
+def test_notes_to_part_sets_velocity_from_the_note_event():
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60, velocity=0.3)]
+    part = notes_to_part(notes)
+    result_note = list(part.flatten().notes)[0]
+    assert result_note.volume.velocityScalar == pytest.approx(0.3)
+
+
+def test_grand_staff_notes_carry_velocity_from_note_events():
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60, velocity=0.9)]
+    score = notes_to_grand_staff(notes)
+    rh, _ = get_hand_parts(score)
+    result_note = list(rh.flatten().notes)[0]
+    assert result_note.volume.velocityScalar == pytest.approx(0.9)
