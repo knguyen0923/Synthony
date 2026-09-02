@@ -279,7 +279,7 @@ def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch
     monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: fake_notes)
     monkeypatch.setattr(
         pipeline_module, "detect_chords",
-        lambda audio_path: [ChordSymbol(start=0.0, duration=1.0, root=0, quality="major")],
+        lambda audio_path: ([ChordSymbol(start=0.0, duration=1.0, root=0, quality="major")], 0.5),
     )
 
     with open(synthetic_piano_wav, "rb") as f:

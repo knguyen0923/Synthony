@@ -14,19 +14,19 @@ from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
 from app.melody.extract import build_melody_part, extract_melody_notes
-from app.notation.hand_split import build_grand_staff_score
+from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 
 
-def _rh_variants(melody_notes):
+def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER):
     """Build the three difficulty tiers' RH Parts from one cleaned melody
     base — Easy/Medium reuse Spec 1's own quantize_part (thins note
     density to the grid) and shift_into_range (narrows register) so the
     right hand actually gets harder as the tier increases; Hard keeps the
     full-detail base unchanged, same "no further simplification"
     philosophy as Spec 1's Hard tier."""
-    base = build_melody_part(melody_notes)
+    base = build_melody_part(melody_notes, seconds_per_quarter)
     return {
         "easy": shift_into_range(quantize_part(base, EASY_GRID), *EASY_RH_RANGE),
         "medium": shift_into_range(quantize_part(base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
@@ -69,13 +69,13 @@ def run_arrange_pipeline(
 
         set_status(job_id, "detecting_chords")
         harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
-        chords = detect_chords(str(harmony_path))
+        chords, seconds_per_quarter = detect_chords(str(harmony_path))
         if not chords:
             raise ValueError("No chords detected")
 
         set_status(job_id, "arranging")
-        variants = generate_lh_variants(chords)
-        rh_variants = _rh_variants(melody_notes)
+        variants = generate_lh_variants(chords, seconds_per_quarter)
+        rh_variants = _rh_variants(melody_notes, seconds_per_quarter)
 
         difficulties = {}
         for tier, lh_part in (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard)):
