@@ -3,7 +3,7 @@ from music21 import clef, note, stream
 from app.arrangement.theory import (
     ROOT_VELOCITY,
     INNER_VOICE_VELOCITY,
-    chord_tones,
+    lh_voicing,
     pitch_class_to_midi_in_range,
     quantized_duration,
     round_to_grid,
@@ -22,9 +22,10 @@ def to_medium_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS
     part = stream.Part(id="LH")
     part.insert(0, clef.BassClef())
     for chord in chords:
+        all_tones, _ = lh_voicing(chord, seconds_per_quarter)
+        tones = all_tones[:MAX_BLOCK_TONES]
         offset = round_to_grid(chord.start / seconds_per_quarter)
         length = quantized_duration(chord.duration, seconds_per_quarter)
-        tones = chord_tones(chord.root, chord.quality)[:MAX_BLOCK_TONES]
         root_midi = pitch_class_to_midi_in_range(tones[0], *MEDIUM_LH_RANGE)
         for pitch_class in tones:
             n = note.Note()
