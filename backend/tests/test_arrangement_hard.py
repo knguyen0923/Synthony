@@ -25,3 +25,17 @@ def test_hard_lh_arpeggiates_root_then_fifth_across_a_long_chord():
     part = to_hard_lh(chords)
     notes = sorted(part.flatten().notes, key=lambda n: n.offset)
     assert [n.pitch.midi for n in notes[:4]] == [36, 43, 40, 43]  # root, 5th, 3rd, 5th
+
+
+def test_hard_lh_lifts_every_fourth_arpeggio_cycle_an_octave_on_a_long_hold():
+    # duration=4.0s = 16 eighth-note steps = exactly 4 Alberti cycles.
+    # Repeating the same 4-note pattern unchanged for that long reads as
+    # "the same chord playing over and over" — cycle 4 (the last one here)
+    # lifts up an octave for variety.
+    chords = [ChordSymbol(start=0.0, duration=4.0, root=0, quality="major")]
+    part = to_hard_lh(chords)
+    notes = sorted(part.flatten().notes, key=lambda n: n.offset)
+    assert len(notes) == 16
+    pitches = [n.pitch.midi for n in notes]
+    assert pitches[:12] == [36, 43, 40, 43] * 3  # cycles 1-3 — unchanged
+    assert pitches[12:16] == [48, 55, 52, 55]  # cycle 4 — lifted an octave

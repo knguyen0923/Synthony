@@ -7,19 +7,31 @@ from scipy.io import wavfile
 
 from app.arrangement.engine import generate_lh_variants
 from app.chords.detect import detect_chords
+from app.difficulty.easy import EASY_GRID, EASY_RH_RANGE
+from app.difficulty.medium import MEDIUM_GRID, MEDIUM_RH_RANGE
+from app.difficulty.quantize import quantize_part
+from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
-from app.melody.extract import extract_melody_notes, melody_part_for_tier
+from app.melody.extract import build_melody_part, extract_melody_notes
 from app.notation.hand_split import build_grand_staff_score
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 
-# Right-hand quantization grid per tier, in quarterLength units — mirrors
-# the difficulty engine's philosophy (Spec 1's easy.py/medium.py narrow
-# the RH; Spec 2 lacks that engine's grid input, so this narrows melody
-# rhythm directly instead) so the right hand actually gets harder to play
-# as the tier increases, instead of being identical across all three.
-MELODY_GRID_BY_TIER = {"easy": 1.0, "medium": 0.5, "hard": 0.25}
+
+def _rh_variants(melody_notes):
+    """Build the three difficulty tiers' RH Parts from one cleaned melody
+    base — Easy/Medium reuse Spec 1's own quantize_part (thins note
+    density to the grid) and shift_into_range (narrows register) so the
+    right hand actually gets harder as the tier increases; Hard keeps the
+    full-detail base unchanged, same "no further simplification"
+    philosophy as Spec 1's Hard tier."""
+    base = build_melody_part(melody_notes)
+    return {
+        "easy": shift_into_range(quantize_part(base, EASY_GRID), *EASY_RH_RANGE),
+        "medium": shift_into_range(quantize_part(base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
+        "hard": base,
+    }
 
 
 def mix_wav_files(path_a: Path, path_b: Path, dest: Path) -> Path:
@@ -63,11 +75,11 @@ def run_arrange_pipeline(
 
         set_status(job_id, "arranging")
         variants = generate_lh_variants(chords)
+        rh_variants = _rh_variants(melody_notes)
 
         difficulties = {}
         for tier, lh_part in (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard)):
-            rh_part = melody_part_for_tier(melody_notes, MELODY_GRID_BY_TIER[tier])
-            score = build_grand_staff_score(rh_part, lh_part, title=title)
+            score = build_grand_staff_score(rh_variants[tier], lh_part, title=title)
             export_musicxml(score, dest_dir / f"{tier}.musicxml")
             difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 

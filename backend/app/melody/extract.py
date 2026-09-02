@@ -7,14 +7,17 @@ from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 def reduce_to_monophonic(notes: list[NoteEvent]) -> list[NoteEvent]:
     """Collapse polyphonic note detections to a single melody line: when
-    two notes overlap in time, keep only the higher-pitched one (the
-    sung/played melody is assumed to be the top voice), discarding the
-    other entirely."""
+    two notes overlap in time, keep whichever has higher confidence
+    (velocity), discarding the other entirely. Basic Pitch commonly
+    detects an octave-doubled harmonic alongside the true sung note —
+    that artifact is usually higher-pitched but lower-confidence than the
+    real one, so picking by pitch alone was systematically biased toward
+    the wrong octave."""
     ordered = sorted(notes, key=lambda n: n.start)
     melody: list[NoteEvent] = []
     for candidate in ordered:
         if melody and candidate.start < melody[-1].end:
-            if candidate.pitch > melody[-1].pitch:
+            if candidate.velocity > melody[-1].velocity:
                 melody[-1] = candidate
         else:
             melody.append(candidate)
@@ -60,7 +63,19 @@ def quantize_melody(notes: list[NoteEvent], grid: float) -> list[NoteEvent]:
     return kept
 
 
-def melody_part_for_tier(notes: list[NoteEvent], grid: float) -> stream.Part:
-    """Quantize a reduced melody note list to `grid` and build the
-    resulting RH Part — the per-tier entry point arrange_pipeline uses."""
-    return notes_to_part(quantize_melody(notes, grid), part_id="RH")
+# A fine, tier-independent grid used once to clean up the raw extracted
+# melody (fixes fragmented, "barely pressing the keys" onsets via
+# quantize_melody's legato extension) before any per-tier difficulty
+# simplification is layered on top. Sixteenth notes preserve essentially
+# all real melodic detail while still closing genuinely broken gaps.
+CLEANUP_GRID = 0.25
+
+
+def build_melody_part(notes: list[NoteEvent]) -> stream.Part:
+    """Clean up a reduced melody note list (legato, de-fragmented) and
+    build the resulting RH Part. This is the full-detail base every
+    difficulty tier derives from — arrange_pipeline layers Spec 1's
+    quantize_part/shift_into_range on top for Easy/Medium so the right
+    hand actually gets harder as the tier increases, same as it already
+    does for Spec 1's own RH."""
+    return notes_to_part(quantize_melody(notes, CLEANUP_GRID), part_id="RH")

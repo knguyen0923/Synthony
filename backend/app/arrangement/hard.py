@@ -20,6 +20,11 @@ ALBERTI_INDICES = (0, 2, 1, 2)
 # including the 7th) instead of an arpeggio — an Alberti pattern chopped
 # off partway through a short chord reads worse than one clean stab.
 SHORT_CHORD_THRESHOLD = 2.0  # seconds
+# On a long-held chord, repeating the same 4-note Alberti cycle unchanged
+# reads as "the same chord playing over and over" — every Nth cycle lifts
+# an octave for variety. Short/normal-length chords rarely reach a second
+# cycle at all, so this only kicks in on genuinely long holds.
+CYCLES_BETWEEN_OCTAVE_LIFTS = 4
 
 
 def to_hard_lh(chords: list[ChordSymbol]) -> stream.Part:
@@ -48,12 +53,14 @@ def to_hard_lh(chords: list[ChordSymbol]) -> stream.Part:
         step = 0
         elapsed = 0.0
         while elapsed < chord.duration:
+            cycle = step // len(ALBERTI_INDICES)
             index = ALBERTI_INDICES[step % len(ALBERTI_INDICES)] % len(tones)
             pitch_class = tones[index]
             offset = round_to_grid((chord.start + elapsed) / SECONDS_PER_QUARTER)
+            octave_lift = 12 if cycle % CYCLES_BETWEEN_OCTAVE_LIFTS == CYCLES_BETWEEN_OCTAVE_LIFTS - 1 else 0
 
             n = note.Note()
-            n.pitch.midi = stack_above(root_midi, pitch_class)
+            n.pitch.midi = stack_above(root_midi, pitch_class) + octave_lift
             n.duration.quarterLength = ARPEGGIO_STEP
             part.insert(offset, n)
 
