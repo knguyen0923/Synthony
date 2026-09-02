@@ -1,8 +1,27 @@
 import pytest
 
-from app.arrangement.hard import to_hard_lh
+from app.arrangement.hard import _short_chord_threshold, to_hard_lh
 from app.arrangement.theory import ROOT_VELOCITY, INNER_VOICE_VELOCITY
 from app.arrangement.types import ChordSymbol
+
+
+def test_short_chord_threshold_is_one_and_a_half_bars_at_the_given_tempo():
+    seconds_per_quarter = 0.5
+    assert _short_chord_threshold(seconds_per_quarter) == pytest.approx(6.0 * 0.5)
+
+
+def test_short_chord_threshold_scales_with_tempo():
+    # Real bug, found by inspecting real-song output: a fixed 2.0s
+    # threshold made the arpeggio/block-chord split accidentally
+    # tempo-dependent — a slow song's bars were all longer than the fixed
+    # cutoff (100% arpeggio, zero block-chord variety), while a fast
+    # song's threshold happened to land almost exactly between its 1-bar
+    # and 2-bar chords purely by coincidence. A tempo-relative threshold
+    # must scale so the split reflects a consistent musical distinction
+    # (roughly "under vs. over 1.5 bars") regardless of tempo.
+    fast_tempo = _short_chord_threshold(60.0 / 129.2)   # a real detected tempo
+    slow_tempo = _short_chord_threshold(60.0 / 73.8)     # a real detected tempo
+    assert slow_tempo > fast_tempo
 
 
 def test_hard_lh_uses_a_full_block_chord_for_a_short_chord():
@@ -45,16 +64,15 @@ def test_hard_lh_lifts_every_fourth_arpeggio_cycle_an_octave_on_a_long_hold():
 
 
 def test_hard_lh_arpeggio_step_offsets_respect_a_non_default_tempo():
-    # duration=4.0s at 1.0 seconds-per-quarter (60 BPM) is a long chord
-    # (still >= SHORT_CHORD_THRESHOLD in real seconds). Each eighth-note
-    # step is ARPEGGIO_STEP(0.5) * seconds_per_quarter(1.0) = 0.5s wide,
-    # so only 8 steps fit in 4.0s of real time, vs 16 at the default
-    # 120 BPM tempo (0.25s-wide steps — see
-    # test_hard_lh_lifts_every_fourth_arpeggio_cycle_an_octave_on_a_long_hold).
-    chords = [ChordSymbol(start=0.0, duration=4.0, root=0, quality="major")]
+    # At 1.0 seconds-per-quarter (60 BPM), the short-chord threshold is
+    # 1.5 bars = 6.0s (see _short_chord_threshold) — duration=8.0s clears
+    # that, so this is a long/arpeggiated chord. Each eighth-note step is
+    # ARPEGGIO_STEP(0.5) * seconds_per_quarter(1.0) = 0.5s wide, so 16
+    # steps fit in 8.0s of real time.
+    chords = [ChordSymbol(start=0.0, duration=8.0, root=0, quality="major")]
     part = to_hard_lh(chords, seconds_per_quarter=1.0)
     notes = sorted(part.flatten().notes, key=lambda n: n.offset)
-    assert len(notes) == 8
+    assert len(notes) == 16
 
 
 def test_hard_lh_accents_the_root_step_in_the_arpeggio():

@@ -18,15 +18,28 @@ ARPEGGIO_STEP = 0.5  # eighth note, in quarterLength units
 # chord_tones()'s root-first ordering). The inner `% len(tones)` handles
 # chords with fewer tones than the pattern references.
 ALBERTI_INDICES = (0, 2, 1, 2)
-# A chord shorter than this gets a single block-chord hit (full tone set,
-# including the 7th) instead of an arpeggio — an Alberti pattern chopped
-# off partway through a short chord reads worse than one clean stab.
-SHORT_CHORD_THRESHOLD = 2.0  # seconds
+# A chord shorter than this (tempo-relative, not a fixed number of
+# seconds) gets a single block-chord hit (full tone set, including the
+# 7th) instead of an arpeggio — an Alberti pattern chopped off partway
+# through a short chord reads worse than one clean stab. 1.5 bars in 4/4
+# (matches this codebase's fixed-4/4 assumption). A fixed-seconds
+# threshold made this split accidentally tempo-dependent: a slow song's
+# bars were all longer than the fixed cutoff (100% arpeggio, zero
+# block-chord variety), while a fast song's threshold happened to land
+# almost exactly between its 1-bar and 2-bar chords purely by
+# coincidence (found via real-song testing).
+SHORT_CHORD_QUARTER_LENGTH = 6.0
 # On a long-held chord, repeating the same 4-note Alberti cycle unchanged
 # reads as "the same chord playing over and over" — every Nth cycle lifts
 # an octave for variety. Short/normal-length chords rarely reach a second
 # cycle at all, so this only kicks in on genuinely long holds.
 CYCLES_BETWEEN_OCTAVE_LIFTS = 4
+
+
+def _short_chord_threshold(seconds_per_quarter: float) -> float:
+    """Real-seconds duration below which a chord is "short" (gets a block
+    chord instead of an arpeggio) at the given tempo — 1.5 bars."""
+    return SHORT_CHORD_QUARTER_LENGTH * seconds_per_quarter
 
 
 def to_hard_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
@@ -37,12 +50,13 @@ def to_hard_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS_P
     part = stream.Part(id="LH")
     part.insert(0, clef.BassClef())
     step_seconds = ARPEGGIO_STEP * seconds_per_quarter
+    short_chord_threshold = _short_chord_threshold(seconds_per_quarter)
 
     for chord in chords:
         tones = chord_tones(chord.root, chord.quality)
         root_midi = pitch_class_to_midi_in_range(tones[0], *HARD_LH_RANGE)
 
-        if chord.duration < SHORT_CHORD_THRESHOLD:
+        if chord.duration < short_chord_threshold:
             offset = round_to_grid(chord.start / seconds_per_quarter)
             length = quantized_duration(chord.duration, seconds_per_quarter)
             for pitch_class in tones:
