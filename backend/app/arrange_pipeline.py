@@ -14,7 +14,7 @@ from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
 from app.melody.extract import build_melody_part, extract_melody_notes
-from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score
+from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score, key_signature_from_tonic
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 
@@ -69,7 +69,7 @@ def run_arrange_pipeline(
 
         set_status(job_id, "detecting_chords")
         harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
-        chords, seconds_per_quarter = detect_chords(str(harmony_path))
+        chords, seconds_per_quarter, detected_key = detect_chords(str(harmony_path))
         if not chords:
             raise ValueError("No chords detected")
 
@@ -78,8 +78,9 @@ def run_arrange_pipeline(
         rh_variants = _rh_variants(melody_notes, seconds_per_quarter)
 
         difficulties = {}
+        key_signature = key_signature_from_tonic(*detected_key)
         for tier, lh_part in (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard)):
-            score = build_grand_staff_score(rh_variants[tier], lh_part, title=title)
+            score = build_grand_staff_score(rh_variants[tier], lh_part, title=title, key_signature=key_signature)
             export_musicxml(score, dest_dir / f"{tier}.musicxml")
             difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 
