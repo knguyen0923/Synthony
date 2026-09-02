@@ -1,19 +1,12 @@
 // frontend/src/components/UploadForm.tsx
 import { useState } from "react";
 import type { TranscribeResponse } from "../api/types";
+import { extractErrorMessage } from "../api/errors";
 
 interface UploadFormProps {
   onSuccess: (result: TranscribeResponse) => void;
   submitFile: (file: File, onProgress: (label: string) => void) => Promise<TranscribeResponse>;
   submitLink: (url: string, onProgress: (label: string) => void) => Promise<TranscribeResponse>;
-}
-
-function extractErrorMessage(err: unknown): string {
-  const detail = (err as { response?: { data?: { detail?: string } } })?.response
-    ?.data?.detail;
-  if (detail) return detail;
-  if (err instanceof Error) return err.message;
-  return "Something went wrong processing that audio.";
 }
 
 export function UploadForm({ onSuccess, submitFile, submitLink }: UploadFormProps) {
@@ -30,7 +23,7 @@ export function UploadForm({ onSuccess, submitFile, submitLink }: UploadFormProp
       const result = await call(setStatusLabel);
       onSuccess(result);
     } catch (err) {
-      setError(extractErrorMessage(err));
+      setError(extractErrorMessage(err, "Something went wrong processing that audio."));
     } finally {
       setLoading(false);
     }
