@@ -39,3 +39,16 @@ def test_hard_lh_lifts_every_fourth_arpeggio_cycle_an_octave_on_a_long_hold():
     pitches = [n.pitch.midi for n in notes]
     assert pitches[:12] == [36, 43, 40, 43] * 3  # cycles 1-3 — unchanged
     assert pitches[12:16] == [48, 55, 52, 55]  # cycle 4 — lifted an octave
+
+
+def test_hard_lh_arpeggio_step_offsets_respect_a_non_default_tempo():
+    # duration=4.0s at 1.0 seconds-per-quarter (60 BPM) is a long chord
+    # (still >= SHORT_CHORD_THRESHOLD in real seconds). Each eighth-note
+    # step is ARPEGGIO_STEP(0.5) * seconds_per_quarter(1.0) = 0.5s wide,
+    # so only 8 steps fit in 4.0s of real time, vs 16 at the default
+    # 120 BPM tempo (0.25s-wide steps — see
+    # test_hard_lh_lifts_every_fourth_arpeggio_cycle_an_octave_on_a_long_hold).
+    chords = [ChordSymbol(start=0.0, duration=4.0, root=0, quality="major")]
+    part = to_hard_lh(chords, seconds_per_quarter=1.0)
+    notes = sorted(part.flatten().notes, key=lambda n: n.offset)
+    assert len(notes) == 8

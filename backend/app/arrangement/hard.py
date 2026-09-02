@@ -27,22 +27,22 @@ SHORT_CHORD_THRESHOLD = 2.0  # seconds
 CYCLES_BETWEEN_OCTAVE_LIFTS = 4
 
 
-def to_hard_lh(chords: list[ChordSymbol]) -> stream.Part:
+def to_hard_lh(chords: list[ChordSymbol], seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
     """A full block chord for short chords, an Alberti-bass arpeggio
     (root-fifth-third-fifth, subdivided into eighth notes) for longer
     ones — variety instead of one repeating pattern regardless of
     context."""
     part = stream.Part(id="LH")
     part.insert(0, clef.BassClef())
-    step_seconds = ARPEGGIO_STEP * SECONDS_PER_QUARTER
+    step_seconds = ARPEGGIO_STEP * seconds_per_quarter
 
     for chord in chords:
         tones = chord_tones(chord.root, chord.quality)
         root_midi = pitch_class_to_midi_in_range(tones[0], *HARD_LH_RANGE)
 
         if chord.duration < SHORT_CHORD_THRESHOLD:
-            offset = round_to_grid(chord.start / SECONDS_PER_QUARTER)
-            length = quantized_duration(chord.duration, SECONDS_PER_QUARTER)
+            offset = round_to_grid(chord.start / seconds_per_quarter)
+            length = quantized_duration(chord.duration, seconds_per_quarter)
             for pitch_class in tones:
                 n = note.Note()
                 n.pitch.midi = stack_above(root_midi, pitch_class)
@@ -56,7 +56,7 @@ def to_hard_lh(chords: list[ChordSymbol]) -> stream.Part:
             cycle = step // len(ALBERTI_INDICES)
             index = ALBERTI_INDICES[step % len(ALBERTI_INDICES)] % len(tones)
             pitch_class = tones[index]
-            offset = round_to_grid((chord.start + elapsed) / SECONDS_PER_QUARTER)
+            offset = round_to_grid((chord.start + elapsed) / seconds_per_quarter)
             octave_lift = 12 if cycle % CYCLES_BETWEEN_OCTAVE_LIFTS == CYCLES_BETWEEN_OCTAVE_LIFTS - 1 else 0
 
             n = note.Note()
