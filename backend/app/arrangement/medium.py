@@ -1,6 +1,12 @@
 from music21 import clef, note, stream
 
-from app.arrangement.theory import chord_tones, pitch_class_to_midi_in_range, stack_above
+from app.arrangement.theory import (
+    chord_tones,
+    pitch_class_to_midi_in_range,
+    quantized_duration,
+    round_to_grid,
+    stack_above,
+)
 from app.arrangement.types import ChordSymbol
 from app.notation.hand_split import SECONDS_PER_QUARTER
 
@@ -14,8 +20,8 @@ def to_medium_lh(chords: list[ChordSymbol]) -> stream.Part:
     part = stream.Part(id="LH")
     part.insert(0, clef.BassClef())
     for chord in chords:
-        offset = chord.start / SECONDS_PER_QUARTER
-        length = chord.duration / SECONDS_PER_QUARTER
+        offset = round_to_grid(chord.start / SECONDS_PER_QUARTER)
+        length = quantized_duration(chord.duration, SECONDS_PER_QUARTER)
         tones = chord_tones(chord.root, chord.quality)[:MAX_BLOCK_TONES]
         root_midi = pitch_class_to_midi_in_range(tones[0], *MEDIUM_LH_RANGE)
         for pitch_class in tones:
