@@ -1,9 +1,11 @@
+// frontend/src/components/UploadForm.tsx
 import { useState } from "react";
-import { transcribeFile, transcribeLink } from "../api/transcribe";
 import type { TranscribeResponse } from "../api/types";
 
 interface UploadFormProps {
   onSuccess: (result: TranscribeResponse) => void;
+  submitFile: (file: File, onProgress: (label: string) => void) => Promise<TranscribeResponse>;
+  submitLink: (url: string, onProgress: (label: string) => void) => Promise<TranscribeResponse>;
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -11,19 +13,21 @@ function extractErrorMessage(err: unknown): string {
     ?.data?.detail;
   if (detail) return detail;
   if (err instanceof Error) return err.message;
-  return "Something went wrong transcribing that audio.";
+  return "Something went wrong processing that audio.";
 }
 
-export function UploadForm({ onSuccess }: UploadFormProps) {
+export function UploadForm({ onSuccess, submitFile, submitLink }: UploadFormProps) {
   const [link, setLink] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusLabel, setStatusLabel] = useState("Working…");
   const [error, setError] = useState<string | null>(null);
 
-  async function runTranscription(call: () => Promise<TranscribeResponse>) {
+  async function run(call: (onProgress: (label: string) => void) => Promise<TranscribeResponse>) {
     setLoading(true);
+    setStatusLabel("Working…");
     setError(null);
     try {
-      const result = await call();
+      const result = await call(setStatusLabel);
       onSuccess(result);
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -35,13 +39,13 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    await runTranscription(() => transcribeFile(file));
+    await run((onProgress) => submitFile(file, onProgress));
   }
 
   async function handleLinkSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!link.trim()) return;
-    await runTranscription(() => transcribeLink(link.trim()));
+    await run((onProgress) => submitLink(link.trim(), onProgress));
   }
 
   return (
@@ -75,12 +79,12 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
             disabled={loading}
           />
           <button type="submit" disabled={loading}>
-            Transcribe
+            Go
           </button>
         </form>
       </div>
 
-      {loading && <p className="upload-form__status">Transcribing…</p>}
+      {loading && <p className="upload-form__status">{statusLabel}</p>}
       {error && (
         <p className="upload-form__error" role="alert">
           {error}

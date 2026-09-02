@@ -2,7 +2,8 @@ import axios from "axios";
 import type { TranscribeResponse } from "./types";
 import { API_BASE_URL } from "./config";
 
-export async function transcribeFile(file: File): Promise<TranscribeResponse> {
+export async function transcribeFile(file: File, onProgress?: (label: string) => void): Promise<TranscribeResponse> {
+  onProgress?.("Transcribing…");
   const form = new FormData();
   form.append("audio_file", file);
   const response = await axios.post<TranscribeResponse>(
@@ -35,12 +36,13 @@ export function classifyLink(url: string): LinkKind {
   return "invalid";
 }
 
-export async function transcribeLink(url: string): Promise<TranscribeResponse> {
+export async function transcribeLink(url: string, onProgress?: (label: string) => void): Promise<TranscribeResponse> {
   const kind = classifyLink(url);
   if (kind === "invalid") {
     throw new Error("That doesn't look like a YouTube or Spotify link.");
   }
 
+  onProgress?.("Transcribing…");
   const form = new FormData();
   form.append(kind === "spotify" ? "spotify_url" : "youtube_url", url);
   const response = await axios.post<TranscribeResponse>(
