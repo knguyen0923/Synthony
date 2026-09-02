@@ -8,10 +8,17 @@ from app.chords.match import match_chord
 BEATS_PER_BAR = 4  # assumes 4/4 time — a fixed-grid simplification, same
                     # spirit as the rest of this codebase's fixed-tempo
                     # assumptions
-MIN_CHORD_DURATION = 2.0  # seconds — a detected chord shorter than this is
-                            # treated as a bar-detection/chroma-noise blip
-                            # and absorbed into its neighbor, rather than
-                            # letting the LH re-trigger on every one
+MIN_CHORD_BAR_FRACTION = 0.5  # a chord shorter than this fraction of a bar,
+                                # at the song's real tempo, is treated as a
+                                # bar-detection/chroma-noise blip and
+                                # absorbed into its neighbor. Tempo-relative,
+                                # not a fixed number of seconds — a fixed
+                                # 2.0s threshold used to absorb nearly every
+                                # legitimate single-bar chord on faster songs
+                                # (e.g. 129 BPM => a ~1.86s bar), chaining
+                                # into a runaway merge that flatlined a real
+                                # alternating progression onto one chord for
+                                # an entire clip (found via real-song testing).
 MIN_TEMPO_BPM = 60.0
 MAX_TEMPO_BPM = 200.0
 DEFAULT_SECONDS_PER_QUARTER = 0.5  # 120 BPM fallback if beat-tracking yields nothing usable
@@ -27,6 +34,14 @@ def _tempo_to_seconds_per_quarter(tempo) -> float:
         return DEFAULT_SECONDS_PER_QUARTER
     bpm = min(max(bpm, MIN_TEMPO_BPM), MAX_TEMPO_BPM)
     return 60.0 / bpm
+
+
+def _min_chord_duration(seconds_per_quarter: float) -> float:
+    """Minimum real chord duration, in seconds, below which a detected
+    chord is treated as a blip and absorbed into its neighbor — half a
+    bar at the song's real tempo, so it always stays shorter than one
+    full legitimate bar-length chord."""
+    return MIN_CHORD_BAR_FRACTION * BEATS_PER_BAR * seconds_per_quarter
 
 
 def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float, tuple[int, str]]:
@@ -63,11 +78,12 @@ def detect_chords(audio_path: str) -> tuple[list[ChordSymbol], float, tuple[int,
         root, quality = match_chord(bar_chroma, key=key)
         raw_chords.append(ChordSymbol(start=float(start), duration=float(end - start), root=root, quality=quality))
 
-    chords = _absorb_short_chords(_merge_consecutive(raw_chords))
+    min_duration = _min_chord_duration(seconds_per_quarter)
+    chords = _absorb_short_chords(_merge_consecutive(raw_chords), min_duration=min_duration)
     return chords, seconds_per_quarter, key
 
 
-def _absorb_short_chords(chords: list[ChordSymbol], min_duration: float = MIN_CHORD_DURATION) -> list[ChordSymbol]:
+def _absorb_short_chords(chords: list[ChordSymbol], min_duration: float) -> list[ChordSymbol]:
     """Merge any chord shorter than min_duration into its neighbor —
     absorbed into the previous chord where one exists, otherwise into the
     next one — then re-merge so a newly-adjacent identical pair collapses

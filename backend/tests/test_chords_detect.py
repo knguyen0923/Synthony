@@ -1,7 +1,10 @@
+import pytest
+
 from app.arrangement.types import ChordSymbol
 from app.chords.detect import (
     _absorb_short_chords,
     _merge_consecutive,
+    _min_chord_duration,
     _tempo_to_seconds_per_quarter,
     detect_chords,
 )
@@ -20,6 +23,26 @@ def test_tempo_to_seconds_per_quarter_clamps_extreme_values():
 def test_tempo_to_seconds_per_quarter_falls_back_on_zero_or_none():
     assert _tempo_to_seconds_per_quarter(0.0) == 0.5
     assert _tempo_to_seconds_per_quarter(None) == 0.5
+
+
+def test_min_chord_duration_is_half_a_bar_at_the_given_tempo():
+    seconds_per_quarter = 60.0 / 129.2  # a real detected tempo (129.2 BPM)
+    assert _min_chord_duration(seconds_per_quarter) == pytest.approx(0.5 * 4 * seconds_per_quarter)
+
+
+def test_min_chord_duration_always_stays_below_a_full_bar():
+    # Real bug, found by inspecting real-song output: the old threshold
+    # was a fixed 2.0 seconds regardless of tempo. At 129.2 BPM a full bar
+    # is only ~1.86s — shorter than that fixed threshold — so nearly
+    # every legitimate single-bar chord was absorbed into whatever came
+    # before it, chaining into a runaway merge that flatlined a real
+    # alternating progression onto one chord for an entire 45-second clip.
+    # A tempo-relative threshold must always stay below one full bar, at
+    # any tempo, so a real bar-length chord is never mistaken for a blip.
+    for bpm in (60.0, 90.0, 120.0, 129.2, 160.0, 200.0):
+        seconds_per_quarter = 60.0 / bpm
+        bar_length = 4 * seconds_per_quarter
+        assert _min_chord_duration(seconds_per_quarter) < bar_length
 
 
 def test_absorb_short_chords_merges_a_short_chord_into_the_previous_one():
@@ -47,6 +70,30 @@ def test_absorb_short_chords_merges_a_leading_short_chord_into_the_next_one():
 def test_absorb_short_chords_leaves_a_single_short_chord_as_is():
     chords = [ChordSymbol(start=0.0, duration=0.1, root=0, quality="major")]
     assert _absorb_short_chords(chords, min_duration=1.0) == chords
+
+
+def test_absorb_short_chords_does_not_flatline_a_fast_tempo_alternating_progression():
+    # Real bug, found by inspecting real-song output: at 129 BPM (a real
+    # detected tempo), a full bar is ~1.86s — shorter than the old fixed
+    # 2.0s absolute-seconds threshold, which absorbed every single
+    # legitimate bar-length chord into whatever came before it, chaining
+    # into a runaway merge that flatlined a real alternating progression
+    # onto one chord for the whole clip. A tempo-relative threshold (half
+    # a bar) must keep legitimate bar-length chords separate.
+    seconds_per_quarter = 60.0 / 129.2
+    bar_length = 4 * seconds_per_quarter
+    min_duration = 0.5 * bar_length
+    chords = [
+        ChordSymbol(
+            start=i * bar_length,
+            duration=bar_length,
+            root=3 if i % 2 == 0 else 0,
+            quality="major" if i % 2 == 0 else "min7",
+        )
+        for i in range(10)
+    ]
+    result = _absorb_short_chords(chords, min_duration=min_duration)
+    assert len(result) == 10  # every bar-length chord survives, none absorbed
 
 
 def test_merge_consecutive_combines_matching_adjacent_chords():
