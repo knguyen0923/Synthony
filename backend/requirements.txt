@@ -11,7 +11,7 @@ librosa
 madmom
 demucs
 scipy
-numpy
+numpy<1.24  # madmom 0.16.1 is incompatible with numpy 2.x (compiled-extension ABI break, removed scalar aliases)
 yt-dlp
 spotipy
 pytest
