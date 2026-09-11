@@ -47,14 +47,34 @@ def test_note_already_on_grid_line_stays_unchanged():
     assert offsets == [1.0]
 
 
-def test_max_voices_default_still_keeps_first_note_per_slot():
-    # Regression: explicit max_voices=1 must match the pre-existing default.
+def test_omitted_max_voices_still_keeps_first_note_per_slot():
+    # Regression: RH's call site (no max_voices arg) must be untouched.
     part = stream.Part(id="RH")
     part.insert(0.0, note.Note("C4"))
     part.insert(0.1, note.Note("D4"))
-    quantized = quantize_part(part, grid=1.0, max_voices=1)
+    quantized = quantize_part(part, grid=1.0)
     pitches = [n.pitch.name for n in quantized.flatten().notes]
     assert pitches == ["C"]
+
+
+def test_explicit_max_voices_one_keeps_highest_velocity_note_not_first_encountered():
+    # LH's Easy tier passes max_voices=1 explicitly on genuinely polyphonic
+    # chord slots; unlike RH's implicit default, it must pick a meaningful
+    # single note (highest velocity, matching max_voices>1's tie-break)
+    # rather than whichever happened to be encountered first.
+    part = stream.Part(id="LH")
+    n1 = note.Note("D3")
+    n1.volume.velocityScalar = 0.3
+    n2 = note.Note("C3")
+    n2.volume.velocityScalar = 0.9
+    part.insert(0.0, n1)
+    part.insert(0.0, n2)
+
+    quantized = quantize_part(part, grid=1.0, max_voices=1)
+
+    notes = list(quantized.flatten().notes)
+    assert len(notes) == 1
+    assert notes[0].pitch.name == "C"
 
 
 def test_max_voices_caps_notes_per_slot_by_velocity():
