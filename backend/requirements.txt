@@ -6,7 +6,7 @@ basic-pitch[onnx]
 piano_transcription_inference
 torchlibrosa
 pretty_midi
-music21
+music21>=9.7  # need expressions.PedalMark (Spec 2 sustain-pedal notation), added in 9.5+/stabilized 9.7
 librosa
 # PyPI's madmom 0.16.1 (unmaintained since ~2022) does not import on Python 3.10+
 # (`from collections import MutableSequence`, removed in 3.10). Installing from the
@@ -18,7 +18,11 @@ librosa
 git+https://github.com/CPJKU/madmom.git@27f032e894#egg=madmom
 demucs
 scipy
-numpy<1.24  # madmom is incompatible with numpy 2.x (compiled-extension ABI break, removed scalar aliases)
+# madmom's compiled Cython extensions are incompatible with numpy 2.x (ABI break: dtype struct
+# size changed). They're fine with any numpy 1.x (verified against 1.26.4 at runtime, despite
+# being built against 1.23.5 — numpy's C ABI is stable across the 1.x series). The lower bound
+# is forced by music21>=9.7.1, which requires numpy>=1.26.4, so pin to the intersection.
+numpy>=1.26.4,<2.0
 # madmom and resampy (a librosa dependency) still import the legacy `pkg_resources` API at
 # runtime, which setuptools 81+ no longer bundles. See README's Backend setup for the full
 # install recipe this pin is part of.
