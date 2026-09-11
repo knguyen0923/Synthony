@@ -5,7 +5,17 @@ from music21 import stream, note, clef, layout, metadata, key, pitch
 
 from app.notation.hand_assignment import assign_hands
 from app.notation.types import NoteEvent
+from app.notation.voice_cap import cap_simultaneous_notes
 from app.tempo.detect import BeatMap
+
+# A piano transcription model's note *offset* reflects acoustic decay, not
+# key-release time — under a held sustain pedal, many notes played at
+# different moments can all get offsets pinned to the same later
+# pedal-release instant, piling up far more "simultaneous" written
+# durations in one hand than were ever actually held together. Capped to
+# the same plausible per-hand upper bound Spec 2's LH extraction already
+# uses (app.lh.extract.HARD_MAX_VOICES).
+MAX_SIMULTANEOUS_VOICES_PER_HAND = 4
 
 # Fixed-tempo assumption for v1 — tempo detection is out of scope.
 SECONDS_PER_QUARTER = 0.5  # 120 BPM
@@ -164,6 +174,8 @@ def notes_to_grand_staff(
     lh.append(clef.BassClef())
 
     rh_notes, lh_notes = assign_hands(notes)
+    rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+    lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
     for event in rh_notes:
         offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
         rh.insert(offset, _to_music21_note(event, beat_map))

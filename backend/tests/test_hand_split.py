@@ -192,6 +192,30 @@ def test_sustained_high_accompaniment_run_gets_temporary_treble_clef():
     assert clefs[1].sign == "F" and clefs[1].offset == 5.0
 
 
+def test_pedal_extended_durations_are_capped_to_a_playable_voice_count():
+    """Regression for a real bug found via real-audio verification: a piano
+    transcription model's note *offset* reflects acoustic/pedal decay, not
+    when the key was released — under a held sustain pedal, many notes
+    played at different times can all get offsets pinned to the same much-
+    later pedal-release moment, so their WRITTEN durations overlap heavily
+    even though they were never meant to be held simultaneously. Real audio
+    showed 11 simultaneous notes piling into one hand this way. Each lone
+    onset here goes to RH (assign_hands' lone-note rule), so this exercises
+    the per-hand voice cap in notes_to_grand_staff directly."""
+    # 6 notes, staggered onsets, all offsets pinned near the same instant
+    # (simulating a pedal release cutting them all off together).
+    notes = [NoteEvent(start=0.1 * i, end=2.0, pitch=60 + i) for i in range(6)]
+
+    score = notes_to_grand_staff(notes)
+    rh, _ = get_hand_parts(score)
+
+    # sweep-line peak simultaneous voices
+    spans = [(n.offset, n.offset + n.duration.quarterLength) for n in rh.flatten().notes]
+    points = sorted({s for s, _ in spans} | {e for _, e in spans})
+    peak = max(sum(1 for s, e in spans if s <= t < e) for t in points)
+    assert peak <= 4
+
+
 def test_wide_chord_splits_into_two_physically_playable_spans():
     """Regression for a real bug found via real-audio verification: the old
     'highest note = RH, everything else = LH' rule dumped an entire wide
