@@ -1,12 +1,16 @@
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
 import numpy as np
+import pretty_midi
 import pytest
 from scipy.io import wavfile
 
 import app.storage as storage_module
+
+_FLUIDSYNTH_SOUNDFONT = Path(pretty_midi.__file__).parent / "TimGM6mb.sf2"
 
 # Redirect STORAGE_ROOT to an isolated, session-scoped temp directory *before*
 # any test module (and, critically, app.main — which mounts a StaticFiles
@@ -34,6 +38,32 @@ def synthetic_piano_wav(tmp_path):
 
     wav_path = tmp_path / "synthetic_piano.wav"
     wavfile.write(str(wav_path), sample_rate, audio)
+    return wav_path
+
+
+@pytest.fixture
+def synthetic_piano_note_wav(tmp_path):
+    """A real Acoustic Grand Piano rendering (via fluidsynth) of a single
+    held A4 note. Unlike synthetic_piano_wav's bare sine tone, this has an
+    actual piano attack/harmonic envelope — needed for models trained on
+    real piano timbre (a pure sine has no attack transient and such models
+    may not fire on it at all). Skips if fluidsynth isn't on PATH."""
+    if shutil.which("fluidsynth") is None:
+        pytest.skip("fluidsynth not installed")
+
+    midi = pretty_midi.PrettyMIDI()
+    instrument = pretty_midi.Instrument(program=0)  # Acoustic Grand Piano
+    instrument.notes.append(pretty_midi.Note(velocity=100, pitch=69, start=0.1, end=1.5))
+    midi.instruments.append(instrument)
+    midi_path = tmp_path / "synthetic_piano_note.mid"
+    midi.write(str(midi_path))
+
+    wav_path = tmp_path / "synthetic_piano_note.wav"
+    subprocess.run(
+        ["fluidsynth", "-ni", "-F", str(wav_path), "-r", "22050", str(_FLUIDSYNTH_SOUNDFONT), str(midi_path)],
+        check=True,
+        capture_output=True,
+    )
     return wav_path
 
 

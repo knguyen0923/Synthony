@@ -3,6 +3,9 @@ uvicorn[standard]
 python-multipart
 httpx
 basic-pitch[onnx]
+piano_transcription_inference
+torchlibrosa
+pretty_midi
 music21
 librosa
 demucs

@@ -15,8 +15,8 @@ from pathlib import Path
 from app.storage import STORAGE_ROOT
 
 
-def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_piano_wav):
-    with open(synthetic_piano_wav, "rb") as f:
+def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_piano_note_wav):
+    with open(synthetic_piano_note_wav, "rb") as f:
         response = client.post(
             "/transcribe",
             files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -42,14 +42,14 @@ def test_transcribe_with_file_upload_returns_all_three_difficulties(synthetic_pi
         assert '<part-name print-object="no">Left Hand</part-name>' in xml
 
 
-def test_transcribe_evicts_oldest_songs_once_over_the_history_cap(monkeypatch, synthetic_piano_wav):
+def test_transcribe_evicts_oldest_songs_once_over_the_history_cap(monkeypatch, synthetic_piano_note_wav):
     import app.storage as storage_module
 
     monkeypatch.setattr(storage_module, "MAX_STORED_SONGS", 2)
 
     song_ids = []
     for _ in range(3):
-        with open(synthetic_piano_wav, "rb") as f:
+        with open(synthetic_piano_note_wav, "rb") as f:
             response = client.post(
                 "/transcribe",
                 files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -99,7 +99,7 @@ def test_transcribe_no_pitched_content_cleans_up_orphan_song_dir(monkeypatch, sy
     failures — including any audio file already written to disk."""
     import app.main as main_module
 
-    monkeypatch.setattr(main_module, "transcribe_audio_to_notes", lambda path: [])
+    monkeypatch.setattr(main_module, "transcribe_piano_audio_to_notes", lambda path: [])
 
     captured_song_ids = []
     real_new_song_id = main_module.new_song_id
@@ -146,10 +146,10 @@ def test_cors_preflight_for_transcribe_allows_frontend_dev_origin():
     assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-def test_songs_lists_transcribed_songs_newest_first(synthetic_piano_wav):
+def test_songs_lists_transcribed_songs_newest_first(synthetic_piano_note_wav):
     song_ids = []
     for _ in range(2):
-        with open(synthetic_piano_wav, "rb") as f:
+        with open(synthetic_piano_note_wav, "rb") as f:
             response = client.post(
                 "/transcribe",
                 files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -163,8 +163,8 @@ def test_songs_lists_transcribed_songs_newest_first(synthetic_piano_wav):
     assert listed_ids == list(reversed(song_ids))
 
 
-def test_get_song_returns_the_same_shape_as_transcribe(synthetic_piano_wav):
-    with open(synthetic_piano_wav, "rb") as f:
+def test_get_song_returns_the_same_shape_as_transcribe(synthetic_piano_note_wav):
+    with open(synthetic_piano_note_wav, "rb") as f:
         transcribe_response = client.post(
             "/transcribe",
             files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -182,8 +182,8 @@ def test_get_song_returns_404_for_unknown_id():
     assert response.status_code == 404
 
 
-def test_songs_listing_includes_pipeline_field(synthetic_piano_wav):
-    with open(synthetic_piano_wav, "rb") as f:
+def test_songs_listing_includes_pipeline_field(synthetic_piano_note_wav):
+    with open(synthetic_piano_note_wav, "rb") as f:
         response = client.post(
             "/transcribe",
             files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -195,8 +195,8 @@ def test_songs_listing_includes_pipeline_field(synthetic_piano_wav):
     assert entry["pipeline"] == "transcribe"
 
 
-def test_delete_song_removes_it_from_storage_and_listing(synthetic_piano_wav):
-    with open(synthetic_piano_wav, "rb") as f:
+def test_delete_song_removes_it_from_storage_and_listing(synthetic_piano_note_wav):
+    with open(synthetic_piano_note_wav, "rb") as f:
         transcribe_response = client.post(
             "/transcribe",
             files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
@@ -216,7 +216,7 @@ def test_delete_song_returns_404_for_unknown_id():
     assert response.status_code == 404
 
 
-def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypatch, synthetic_piano_wav):
+def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypatch, synthetic_piano_note_wav):
     """A malicious filename like '../../../etc/passwant.wav' must not let the
     upload escape the request's temp directory. We monkeypatch
     tempfile.mkdtemp (which TemporaryDirectory uses under the hood) to learn
@@ -236,7 +236,7 @@ def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypat
 
     malicious_names = ["../../../etc/passwant.wav", "/etc/passwant.wav"]
     for name in malicious_names:
-        with open(synthetic_piano_wav, "rb") as f:
+        with open(synthetic_piano_note_wav, "rb") as f:
             response = client.post(
                 "/transcribe",
                 files={"audio_file": (name, f, "audio/wav")},

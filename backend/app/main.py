@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from app.arrange_pipeline import run_arrange_pipeline
 from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
-from app.transcription.audio_to_midi import transcribe_audio_to_notes
+from app.transcription.audio_to_midi import transcribe_piano_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
 from app.export import export_musicxml
@@ -155,7 +155,7 @@ async def transcribe(
     try:
         ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
 
-        notes = transcribe_audio_to_notes(str(ingested.path))
+        notes = transcribe_piano_audio_to_notes(str(ingested.path))
         if not notes:
             raise HTTPException(status_code=422, detail="No pitched content detected")
 

@@ -72,7 +72,7 @@ real-time-or-slower for a full song.
 
 ## Stack
 
-- **Backend:** Python 3.9, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for both RH melody and LH harmony transcription), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
+- **Backend:** Python 3.9, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for Spec 2's RH vocal-melody and LH accompaniment transcription — neither is solo piano audio), [piano_transcription_inference](https://github.com/qiuqiangkong/piano_transcription_inference) (ByteDance's MAESTRO-trained high-resolution piano transcription model, used only for Spec 1's solo-piano audio — meaningfully more accurate than Basic Pitch on real piano recordings), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
 - **Frontend:** React 18 + Vite + TypeScript, axios, [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/), html5-qrcode.
 
 ## Running it
@@ -89,6 +89,12 @@ uvicorn app.main:app --reload
 YouTube-link ingestion requires `ffmpeg` to be installed and on `PATH` (used by
 yt-dlp to extract audio); without it, YouTube-link and Spotify-link input will
 fail.
+
+`/transcribe`'s first request downloads the piano transcription model's
+~170MB checkpoint to `~/piano_transcription_inference_data/` (one-time, then
+cached). Tests exercising this path need `fluidsynth` on `PATH` to render a
+realistic test note (skipped otherwise) — install via `brew install fluid-synth`
+or your platform's equivalent.
 
 The API listens on `http://localhost:8000`. Rendered scores and source
 audio are written under `backend/storage/{song_id}/` (git-ignored, created
