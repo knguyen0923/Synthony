@@ -31,37 +31,40 @@ Input (file upload | YouTube link | Spotify link | QR-scanned link)
         ▼
 Ingestion — normalizes any input source to a local WAV/MP3
         │
-        ├─────────────────────────────┐
-        ▼ (Solo piano recording)      ▼ (Any song)
-Transcription — Basic Pitch      Stem separation — Demucs:
-audio → raw MIDI (polyphonic)    vocals / drums / bass / other
-        │                             │
-        ▼                             ├─► Melody extraction — Basic Pitch
-Notation — MIDI → music21              │   on the vocals stem → RH
-grand-staff Score (melody-aware        │
-hand split: highest simultaneous       └─► LH extraction — Basic Pitch on
-note = RH, rest = LH)                      the bass+other mix, capped to a
-        │                                  plausible simultaneous-voice
-        │                                  count → LH (a real
-        │                                  transcription, not a
-        │                                  synthesized pattern)
-        │                             │
-        │                        Key/tempo detection over the same
-        │                        bass+other mix (chroma + beat-tracking)
-        │                             │
-        └─────────────┬───────────────┘
-                       ▼
+        ├─────────────────────────────────┐
+        ▼ (Solo piano recording)          ▼ (Any song)
+Transcription — piano-specific model  Stem separation — Demucs:
+(piano_transcription_inference,       vocals / drums / bass / other
+MAESTRO-trained) audio → raw MIDI             │
+(polyphonic)                                  ├─► Melody extraction —
+        │                                     │   Basic Pitch on the
+Beat-map tempo detection (madmom              │   vocals stem → RH
+neural beat tracker; librosa global           │
+tempo estimate, then fixed 120 BPM,           └─► LH extraction — Basic
+as successive fallbacks)                          Pitch on the bass+other
+        │                                         mix, capped to a
+Notation — MIDI → music21 grand-staff             plausible simultaneous-
+Score via a continuity-aware DP hand              voice count → LH (a real
+split (physical hand span, pitch                 transcription, not a
+continuity, hand-crossing and                     synthesized pattern)
+switching penalties — not a simple            │
+top-note-wins rule), each hand capped     Key/tempo detection over the same
+to a plausible simultaneous-voice         bass+other mix (chroma + beat-
+count                                      tracking, plus a madmom beat map)
+        │                                     │
+        └─────────────────┬───────────────────┘
+                           ▼
        build_grand_staff_score(RH, LH) — shared by both pipelines
-                       │
-                       ▼
+                           │
+                           ▼
        Difficulty engine — pure Part-level transforms (quantize note
        density, narrow register) derive Easy/Medium from one rich Hard
        base, for both hands, in both pipelines
-                       │
-                       ▼
+                           │
+                           ▼
                 MusicXML export × 3
-                       │
-                       ▼
+                           │
+                           ▼
 Frontend — Easy / Medium / Hard tabs, rendered via OpenSheetMusicDisplay
 ```
 
@@ -72,7 +75,7 @@ real-time-or-slower for a full song.
 
 ## Stack
 
-- **Backend:** Python 3.9, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for Spec 2's RH vocal-melody and LH accompaniment transcription — neither is solo piano audio), [piano_transcription_inference](https://github.com/qiuqiangkong/piano_transcription_inference) (ByteDance's MAESTRO-trained high-resolution piano transcription model, used only for Spec 1's solo-piano audio — meaningfully more accurate than Basic Pitch on real piano recordings), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
+- **Backend:** Python 3.9, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for Spec 2's RH vocal-melody and LH accompaniment transcription — neither is solo piano audio), [piano_transcription_inference](https://github.com/qiuqiangkong/piano_transcription_inference) (ByteDance's MAESTRO-trained high-resolution piano transcription model, used only for Spec 1's solo-piano audio — meaningfully more accurate than Basic Pitch on real piano recordings), [madmom](https://github.com/CPJKU/madmom) (neural beat tracker driving real tempo detection in both pipelines, with a librosa global-tempo estimate and then a fixed 120 BPM default as successive fallbacks), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
 - **Frontend:** React 18 + Vite + TypeScript, axios, [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/), html5-qrcode.
 
 ## Running it
@@ -153,8 +156,9 @@ or `spotify_url` (form fields). Returns:
 }
 ```
 
-Audio is capped at 10 minutes server-side. Tempo is assumed fixed at 120
-BPM — no tempo detection for this pipeline.
+Audio is capped at 10 minutes server-side. Tempo is detected per-song from
+a real beat map (madmom's neural beat tracker, with a librosa global-tempo
+estimate and then a fixed 120 BPM default as successive fallbacks).
 
 `POST /arrange` — same input fields as `/transcribe`. Returns `202`
 immediately:
@@ -182,8 +186,14 @@ beat-tracking); time signature is assumed fixed at 4/4.
 ```
 backend/app/
   ingestion/       file upload, YouTube download, Spotify resolution — shared by both pipelines
-  transcription/   Basic Pitch wrapper (audio → NoteEvents) — shared by both pipelines
-  notation/        NoteEvent → grand-staff music21 Score, hand split, clef handling
+  transcription/   audio → NoteEvents: Basic Pitch (Spec 2's vocal/harmony stems) and
+                     piano_transcription_inference (Spec 1's solo-piano audio)
+  tempo/           real beat-map tempo detection (madmom neural beat tracker, with
+                     librosa/fixed-BPM fallbacks) — shared by both pipelines
+  notation/        NoteEvent → grand-staff music21 Score: hand_split.py (assembly,
+                     beat-map-aware rhythm, dynamic clef changes), hand_assignment.py
+                     (continuity-aware DP RH/LH split), voice_cap.py (per-hand
+                     simultaneous-voice capping)
   difficulty/       quantize_part / shift_into_range (both hands, both pipelines) +
                      easy.py / medium.py / hard.py — Spec 1's own Score → Score pipeline
   main.py          POST /transcribe and POST /arrange wiring
