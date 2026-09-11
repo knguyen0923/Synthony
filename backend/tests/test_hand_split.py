@@ -192,6 +192,29 @@ def test_sustained_high_accompaniment_run_gets_temporary_treble_clef():
     assert clefs[1].sign == "F" and clefs[1].offset == 5.0
 
 
+def test_wide_chord_splits_into_two_physically_playable_spans():
+    """Regression for a real bug found via real-audio verification: the old
+    'highest note = RH, everything else = LH' rule dumped an entire wide
+    chord minus its top note into LH, producing spans no hand can actually
+    play (real audio showed 11 simultaneous notes in one hand). The
+    continuity-aware assign_hands algorithm should split a wide chord into
+    two physically plausible spans instead."""
+    # A 3.5+ octave chord — same shape as the wide-chord stress case
+    # assign_hands was validated against directly.
+    pitches = [40, 48, 52, 55, 60, 64]
+    notes = [NoteEvent(start=0.0, end=1.0, pitch=p) for p in pitches]
+
+    score = notes_to_grand_staff(notes)
+    rh, lh = get_hand_parts(score)
+
+    rh_pitches = [n.pitch.midi for n in rh.flatten().notes]
+    lh_pitches = [n.pitch.midi for n in lh.flatten().notes]
+
+    assert rh_pitches and lh_pitches, "both hands should be in use for a wide chord"
+    assert max(rh_pitches) - min(rh_pitches) <= 12
+    assert max(lh_pitches) - min(lh_pitches) <= 19
+
+
 def test_lone_low_note_is_melody_and_goes_to_right_hand():
     notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]  # C3, alone = melody
     score = notes_to_grand_staff(notes)

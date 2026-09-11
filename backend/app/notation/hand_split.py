@@ -3,6 +3,7 @@ from typing import Optional
 
 from music21 import stream, note, clef, layout, metadata, key, pitch
 
+from app.notation.hand_assignment import assign_hands
 from app.notation.types import NoteEvent
 from app.tempo.detect import BeatMap
 
@@ -147,9 +148,10 @@ def build_grand_staff_score(
 def notes_to_grand_staff(
     notes: list[NoteEvent], title: Optional[str] = None, beat_map: Optional[BeatMap] = None
 ) -> stream.Score:
-    """Group notes by onset; the highest-pitched note at each onset is the
-    melody and always goes to the right hand, regardless of its absolute
-    pitch. Every other simultaneous note goes to the left hand.
+    """Assign notes to right/left hand via a continuity-aware dynamic-
+    programming search (app.notation.hand_assignment.assign_hands) that
+    considers voice continuity and physical hand span across onsets,
+    rather than an instantaneous "highest simultaneous pitch = melody" rule.
 
     beat_map converts note timing (seconds) to notated rhythm
     (quarterLength) — pass a real one (from app.tempo.detect.detect_beat_map)
@@ -161,22 +163,13 @@ def notes_to_grand_staff(
     lh = stream.Part(id="LH")
     lh.append(clef.BassClef())
 
-    by_onset: dict[float, list[NoteEvent]] = {}
-    for event in notes:
-        by_onset.setdefault(round(event.start, 3), []).append(event)
-
-    for onset in sorted(by_onset):
-        group = sorted(by_onset[onset], key=lambda e: e.pitch)
-        melody_event = group[-1]
-        accompaniment = group[:-1]
-
-        offset = _seconds_to_quarter_length(melody_event.start, beat_map)
-        offset = _round_to_grid(offset, NOTATION_GRID)
-        rh.insert(offset, _to_music21_note(melody_event, beat_map))
-        for event in accompaniment:
-            acc_offset = _seconds_to_quarter_length(event.start, beat_map)
-            acc_offset = _round_to_grid(acc_offset, NOTATION_GRID)
-            lh.insert(acc_offset, _to_music21_note(event, beat_map))
+    rh_notes, lh_notes = assign_hands(notes)
+    for event in rh_notes:
+        offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
+        rh.insert(offset, _to_music21_note(event, beat_map))
+    for event in lh_notes:
+        offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
+        lh.insert(offset, _to_music21_note(event, beat_map))
 
     return build_grand_staff_score(rh, lh, title=title)
 
