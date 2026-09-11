@@ -1,7 +1,10 @@
+from typing import Optional
+
 from music21 import stream
 
 from app.notation.hand_split import SECONDS_PER_QUARTER, notes_to_part
 from app.notation.types import NoteEvent
+from app.tempo.detect import BeatMap
 from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 
@@ -72,8 +75,18 @@ def quantize_melody(notes: list[NoteEvent], grid: float, seconds_per_quarter: fl
 CLEANUP_GRID = 0.25
 
 
-def build_melody_part(notes: list[NoteEvent], seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
+def build_melody_part(
+    notes: list[NoteEvent], seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+) -> stream.Part:
     """Clean up a reduced melody note list (legato, de-fragmented) and
     build the resulting RH Part. This is the full-detail base every
-    difficulty tier derives from."""
-    return notes_to_part(quantize_melody(notes, CLEANUP_GRID, seconds_per_quarter), part_id="RH", seconds_per_quarter=seconds_per_quarter)
+    difficulty tier derives from.
+
+    The cleanup pass (quantize_melody) still runs on the fixed-tempo
+    seconds_per_quarter grid — it only dedupes/legatos fragmented onsets at
+    a fine, tier-independent resolution, not the final notated rhythm, so
+    it doesn't need beat_map's per-note accuracy. beat_map, when given,
+    overrides seconds_per_quarter for the final notes_to_part conversion,
+    which does determine notated position."""
+    cleaned = quantize_melody(notes, CLEANUP_GRID, seconds_per_quarter)
+    return notes_to_part(cleaned, part_id="RH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map)

@@ -4,6 +4,7 @@ from scipy.io import wavfile
 
 from app.arrange_pipeline import _lh_variants, mix_wav_files
 from app.notation.types import NoteEvent
+from app.tempo.detect import BeatMap
 
 
 def test_lh_variants_raises_when_no_harmonic_content_detected(monkeypatch):
@@ -38,6 +39,19 @@ def test_lh_variants_produces_all_three_tiers_with_decreasing_voice_counts(monke
     easy_count = len(list(variants["easy"].flatten().notes))
     assert hard_count == 2  # Hard is the transcription itself, unmodified
     assert easy_count == 1  # Easy caps to a single voice (max_voices=1)
+
+
+def test_lh_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_given(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    fake_notes = [NoteEvent(start=1.0, end=2.0, pitch=48)]
+    monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: fake_notes)
+
+    beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM, unlike the 120 BPM default
+    variants = _lh_variants("fake/harmony.wav", beat_map=beat_map)
+
+    hard_note = list(variants["hard"].flatten().notes)[0]
+    assert hard_note.offset == 1.0  # 1.0 QL, not the 2.0 QL a 120 BPM default would give
 
 
 def test_mix_wav_files_sums_two_tones_without_clipping(tmp_path):

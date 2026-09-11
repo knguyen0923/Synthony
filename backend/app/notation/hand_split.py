@@ -4,6 +4,7 @@ from typing import Optional
 from music21 import stream, note, clef, layout, metadata, key, pitch
 
 from app.notation.types import NoteEvent
+from app.tempo.detect import BeatMap
 
 # Fixed-tempo assumption for v1 — tempo detection is out of scope.
 SECONDS_PER_QUARTER = 0.5  # 120 BPM
@@ -24,8 +25,12 @@ LH_HIGH_REGISTER_THRESHOLD = 67  # G4 — sustained LH notes at/above this get a
 MIN_CLEF_CHANGE_RUN = 4  # consecutive notes required before switching, to avoid flicker on passing tones
 
 
-def _seconds_to_quarter_length(seconds: float) -> float:
-    return seconds / SECONDS_PER_QUARTER
+def _seconds_to_quarter_length(seconds: float, beat_map: BeatMap) -> float:
+    # A note timestamped before the beat map's first detected beat
+    # extrapolates to a negative quarterLength, which music21 can't place
+    # in any measure — nothing plays "before" the start of the notated
+    # piece, so clamp to 0 rather than crash on export.
+    return max(0.0, beat_map.to_quarter_length(seconds))
 
 
 def _round_to_grid(value: float, grid: float) -> float:
@@ -33,11 +38,11 @@ def _round_to_grid(value: float, grid: float) -> float:
     return round(value / grid) * grid
 
 
-def _to_music21_note(event: NoteEvent, seconds_per_quarter: float = SECONDS_PER_QUARTER) -> note.Note:
+def _to_music21_note(event: NoteEvent, beat_map: BeatMap) -> note.Note:
     m21_note = note.Note()
     m21_note.pitch.midi = event.pitch
     m21_note.volume.velocityScalar = event.velocity
-    duration = (event.end - event.start) / seconds_per_quarter
+    duration = _seconds_to_quarter_length(event.end, beat_map) - _seconds_to_quarter_length(event.start, beat_map)
     duration = max(duration, NOTATION_GRID)
     m21_note.duration.quarterLength = _round_to_grid(duration, NOTATION_GRID)
     return m21_note
@@ -139,10 +144,18 @@ def build_grand_staff_score(
     return score
 
 
-def notes_to_grand_staff(notes: list[NoteEvent], title: Optional[str] = None) -> stream.Score:
+def notes_to_grand_staff(
+    notes: list[NoteEvent], title: Optional[str] = None, beat_map: Optional[BeatMap] = None
+) -> stream.Score:
     """Group notes by onset; the highest-pitched note at each onset is the
     melody and always goes to the right hand, regardless of its absolute
-    pitch. Every other simultaneous note goes to the left hand."""
+    pitch. Every other simultaneous note goes to the left hand.
+
+    beat_map converts note timing (seconds) to notated rhythm
+    (quarterLength) — pass a real one (from app.tempo.detect.detect_beat_map)
+    for audio with actual tempo variation; omitting it keeps the previous
+    fixed-120-BPM behavior via BeatMap.constant."""
+    beat_map = beat_map or BeatMap.constant(SECONDS_PER_QUARTER)
     rh = stream.Part(id="RH")
     rh.append(clef.TrebleClef())
     lh = stream.Part(id="LH")
@@ -157,27 +170,37 @@ def notes_to_grand_staff(notes: list[NoteEvent], title: Optional[str] = None) ->
         melody_event = group[-1]
         accompaniment = group[:-1]
 
-        offset = _seconds_to_quarter_length(melody_event.start)
+        offset = _seconds_to_quarter_length(melody_event.start, beat_map)
         offset = _round_to_grid(offset, NOTATION_GRID)
-        rh.insert(offset, _to_music21_note(melody_event))
+        rh.insert(offset, _to_music21_note(melody_event, beat_map))
         for event in accompaniment:
-            acc_offset = _seconds_to_quarter_length(event.start)
+            acc_offset = _seconds_to_quarter_length(event.start, beat_map)
             acc_offset = _round_to_grid(acc_offset, NOTATION_GRID)
-            lh.insert(acc_offset, _to_music21_note(event))
+            lh.insert(acc_offset, _to_music21_note(event, beat_map))
 
     return build_grand_staff_score(rh, lh, title=title)
 
 
-def notes_to_part(notes: list[NoteEvent], part_id: str = "RH", seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
+def notes_to_part(
+    notes: list[NoteEvent],
+    part_id: str = "RH",
+    seconds_per_quarter: float = SECONDS_PER_QUARTER,
+    beat_map: Optional[BeatMap] = None,
+) -> stream.Part:
     """Build a single-line Part from a flat list of NoteEvents, e.g. an
     already-reduced monophonic melody line. Unlike notes_to_grand_staff,
     this does no RH/LH splitting — every note goes into one Part, in
-    onset order."""
+    onset order.
+
+    beat_map, when given, overrides seconds_per_quarter entirely (the
+    latter stays only as the fixed-tempo default for callers with no
+    detected tempo)."""
+    beat_map = beat_map or BeatMap.constant(seconds_per_quarter)
     part = stream.Part(id=part_id)
     part.append(clef.TrebleClef())
     for event in sorted(notes, key=lambda e: e.start):
-        offset = _round_to_grid(event.start / seconds_per_quarter, NOTATION_GRID)
-        part.insert(offset, _to_music21_note(event, seconds_per_quarter))
+        offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
+        part.insert(offset, _to_music21_note(event, beat_map))
     return part
 
 

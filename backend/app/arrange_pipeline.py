@@ -7,7 +7,7 @@ from scipy.io import wavfile
 
 from app.chords.detect import detect_key_and_tempo
 from app.difficulty.easy import EASY_GRID, EASY_LH_RANGE, EASY_RH_RANGE
-from app.difficulty.medium import MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
+from app.difficulty.medium import MAX_VOICING_TONES, MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
 from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
@@ -17,18 +17,17 @@ from app.melody.extract import build_melody_part, extract_melody_notes
 from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score, key_signature_from_tonic
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
+from app.tempo.detect import BeatMap, detect_beat_map
 
-MEDIUM_LH_MAX_VOICES = 3  # matches the previous arrangement/medium.py's MAX_BLOCK_TONES
 
-
-def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER):
+def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):
     """Build the three difficulty tiers' RH Parts from one cleaned melody
     base — Easy/Medium reuse Spec 1's own quantize_part (thins note
     density to the grid) and shift_into_range (narrows register) so the
     right hand actually gets harder as the tier increases; Hard keeps the
     full-detail base unchanged, same "no further simplification"
     philosophy as Spec 1's Hard tier."""
-    base = build_melody_part(melody_notes, seconds_per_quarter)
+    base = build_melody_part(melody_notes, seconds_per_quarter, beat_map)
     return {
         "easy": shift_into_range(quantize_part(base, EASY_GRID), *EASY_RH_RANGE),
         "medium": shift_into_range(quantize_part(base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
@@ -36,7 +35,7 @@ def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER)
     }
 
 
-def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER):
+def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):
     """Build the three difficulty tiers' LH Parts from one real
     transcription of the harmony audio — same shape as _rh_variants:
     Easy/Medium derive from the Hard base via quantize_part(max_voices)
@@ -45,10 +44,10 @@ def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUA
     notes = extract_lh_notes(harmony_path)
     if not notes:
         raise ValueError("No harmonic content detected")
-    base = build_lh_part(notes, seconds_per_quarter)
+    base = build_lh_part(notes, seconds_per_quarter, beat_map)
     return {
         "easy": shift_into_range(quantize_part(base, EASY_GRID, max_voices=1), *EASY_LH_RANGE),
-        "medium": shift_into_range(quantize_part(base, MEDIUM_GRID, max_voices=MEDIUM_LH_MAX_VOICES), *MEDIUM_LH_RANGE),
+        "medium": shift_into_range(quantize_part(base, MEDIUM_GRID, max_voices=MAX_VOICING_TONES), *MEDIUM_LH_RANGE),
         "hard": base,
     }
 
@@ -89,10 +88,11 @@ def run_arrange_pipeline(
         set_status(job_id, "detecting_key")
         harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
         detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
+        beat_map = detect_beat_map(str(harmony_path))
 
         set_status(job_id, "arranging")
-        lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter)
-        rh_variants = _rh_variants(melody_notes, seconds_per_quarter)
+        lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
+        rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
 
         difficulties = {}
         key_signature = key_signature_from_tonic(*detected_key)

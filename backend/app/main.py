@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.arrange_pipeline import run_arrange_pipeline
 from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
+from app.tempo.detect import detect_beat_map
 from app.transcription.audio_to_midi import transcribe_piano_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
@@ -159,8 +160,10 @@ async def transcribe(
         if not notes:
             raise HTTPException(status_code=422, detail="No pitched content detected")
 
+        beat_map = detect_beat_map(str(ingested.path))
+
         title = ingested.title
-        score = notes_to_grand_staff(notes, title=title)
+        score = notes_to_grand_staff(notes, title=title, beat_map=beat_map)
         variants = generate_variants(score)
 
         for tier, variant_score in (

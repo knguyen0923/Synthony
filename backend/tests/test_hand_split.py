@@ -14,6 +14,61 @@ from app.notation.hand_split import (
     key_signature_from_tonic,
 )
 from app.export import export_musicxml
+from app.tempo.detect import BeatMap
+
+
+def test_notes_to_part_uses_a_beat_map_instead_of_a_fixed_tempo_when_given():
+    # beat_times=[0, 1, 2] => 1 quarterLength per second (60 BPM), unlike
+    # the 0.5s-per-quarter (120 BPM) default.
+    beat_map = BeatMap([0.0, 1.0, 2.0])
+    notes = [NoteEvent(start=0.5, end=1.5, pitch=60)]
+
+    part = notes_to_part(notes, beat_map=beat_map)
+    result_note = list(part.flatten().notes)[0]
+
+    assert result_note.offset == 0.5
+    assert result_note.duration.quarterLength == 1.0
+
+
+def test_notes_to_part_clamps_notes_before_the_first_detected_beat_to_offset_zero():
+    """A note starting before the beat map's first detected beat would
+    otherwise extrapolate to a negative quarterLength position, which
+    music21 can't place in any measure (real bug: hit on real /arrange
+    audio where madmom's first detected beat comes after some already-
+    transcribed early note)."""
+    beat_map = BeatMap([2.0, 3.0, 4.0])  # first detected beat at t=2s
+    notes = [NoteEvent(start=0.5, end=1.0, pitch=60)]  # well before the first beat
+
+    part = notes_to_part(notes, beat_map=beat_map)
+    result_note = list(part.flatten().notes)[0]
+
+    assert result_note.offset == 0.0
+
+
+def test_notes_to_part_clamps_duration_for_a_note_spanning_the_first_beat():
+    """A note that starts before the first detected beat and ends after it
+    must have its duration measured from the clamped (0.0) start, not the
+    raw negative extrapolation — otherwise it would render far too long."""
+    beat_map = BeatMap([2.0, 3.0, 4.0])  # first detected beat at t=2s, 1 QL/s
+    notes = [NoteEvent(start=0.5, end=2.5, pitch=60)]  # spans the first beat
+
+    part = notes_to_part(notes, beat_map=beat_map)
+    result_note = list(part.flatten().notes)[0]
+
+    assert result_note.offset == 0.0
+    assert result_note.duration.quarterLength == 0.5  # 0.0 -> 0.5 QL, not 0.5s-to-2.0QL's 1.5+ span
+
+
+def test_notes_to_grand_staff_uses_a_beat_map_instead_of_a_fixed_tempo_when_given():
+    beat_map = BeatMap([0.0, 1.0, 2.0])
+    notes = [NoteEvent(start=1.0, end=2.0, pitch=60)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map)
+    rh, _ = get_hand_parts(score)
+    result_note = list(rh.flatten().notes)[0]
+
+    assert result_note.offset == 1.0
+    assert result_note.duration.quarterLength == 1.0
 
 
 def test_grand_staff_has_braced_part_group_in_exported_musicxml():

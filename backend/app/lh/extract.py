@@ -1,8 +1,11 @@
+from typing import Optional
+
 from music21 import stream
 
 from app.difficulty.range_shift import shift_into_range
 from app.notation.hand_split import SECONDS_PER_QUARTER, notes_to_part
 from app.notation.types import NoteEvent
+from app.tempo.detect import BeatMap
 from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 HARD_MAX_VOICES = 4  # a plausible upper bound on notes one hand plays at once
@@ -45,9 +48,13 @@ def extract_lh_notes(audio_path: str, max_voices: int = HARD_MAX_VOICES) -> list
     return cap_simultaneous_notes(notes, max_voices)
 
 
-def build_lh_part(notes: list[NoteEvent], seconds_per_quarter: float = SECONDS_PER_QUARTER) -> stream.Part:
+def build_lh_part(
+    notes: list[NoteEvent], seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+) -> stream.Part:
     """Register-shift the capped transcription into HARD_LH_RANGE and
     build the LH 'Hard' Part — the full-detail base every difficulty tier
-    derives from, same role as melody.extract.build_melody_part for RH."""
-    part = notes_to_part(notes, part_id="LH", seconds_per_quarter=seconds_per_quarter)
+    derives from, same role as melody.extract.build_melody_part for RH.
+
+    beat_map, when given, overrides seconds_per_quarter for note timing."""
+    part = notes_to_part(notes, part_id="LH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map)
     return shift_into_range(part, *HARD_LH_RANGE)

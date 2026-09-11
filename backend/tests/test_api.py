@@ -260,6 +260,7 @@ import time
 
 from app.notation.types import NoteEvent
 from app.separation.types import Stems
+from app.tempo.detect import BeatMap
 
 
 def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch, synthetic_piano_wav):
@@ -281,6 +282,10 @@ def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch
     monkeypatch.setattr(
         pipeline_module, "detect_key_and_tempo",
         lambda audio_path: ((0, "major"), 0.5),
+    )
+    monkeypatch.setattr(
+        pipeline_module, "detect_beat_map",
+        lambda audio_path: BeatMap.constant(0.5),
     )
 
     with open(synthetic_piano_wav, "rb") as f:

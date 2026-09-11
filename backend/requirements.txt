@@ -8,6 +8,7 @@ torchlibrosa
 pretty_midi
 music21
 librosa
+madmom
 demucs
 scipy
 numpy
