@@ -17,3 +17,10 @@ frontend/dist/
 
 # Superpowers scratch (SDD workspaces, brainstorming sessions)
 .superpowers/
+
+# Quality-harness real-audio test corpus (~25MB of WAV/MP3 fixtures) and its
+# generated run output — kept on disk for reuse, never committed (binary
+# audio/MIDI would permanently bloat repo history). See
+# backend/scripts/quality_harness/run_baseline.py for provenance notes.
+backend/scripts/quality_harness/assets/
+backend/scripts/quality_harness/output/
