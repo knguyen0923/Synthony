@@ -12,12 +12,18 @@ from app.transcription.audio_to_midi import transcribe_audio_to_notes
 HARD_MAX_VOICES = 4  # a plausible upper bound on notes one hand plays at once
 HARD_LH_RANGE = (36, 55)  # C2-G3, same bass register as the previous Hard tier
 
+# Basic Pitch's default minimum_note_length (127.7ms) produces heavily
+# fragmented short notes against the busy, non-piano "bass+other" harmony
+# mix this call transcribes. Raised here — and only here, not RH's cleaner
+# vocal stem — to cut down on that fragmentation.
+LH_MINIMUM_NOTE_LENGTH_MS = 180
+
 
 def extract_lh_notes(audio_path: str, max_voices: int = HARD_MAX_VOICES) -> list[NoteEvent]:
     """Run Basic Pitch on harmony audio (bass+other mix) and cap to
     max_voices concurrently-sounding notes. Unlike RH, deliberately keeps
     polyphony — real LH accompaniment is chordal, not a single line."""
-    notes = transcribe_audio_to_notes(audio_path)
+    notes = transcribe_audio_to_notes(audio_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
     return cap_simultaneous_notes(notes, max_voices)
 
 

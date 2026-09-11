@@ -2,6 +2,7 @@ import os
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 import librosa
 import pretty_midi
@@ -22,8 +23,16 @@ _MIN_CHECKPOINT_SIZE_BYTES = 1.6e8  # matches the library's own corrupt-download
 _piano_transcriptor = None
 
 
-def transcribe_audio_to_notes(audio_path: str) -> list[NoteEvent]:
-    _, _, note_events = predict(audio_path, ICASSP_2022_MODEL_PATH)
+def transcribe_audio_to_notes(audio_path: str, minimum_note_length: Optional[float] = None) -> list[NoteEvent]:
+    """Run Basic Pitch on `audio_path`.
+
+    minimum_note_length, when given, is passed through to Basic Pitch's
+    predict() as-is (its units are milliseconds; Basic Pitch's own default
+    is 127.7). Left as None (the default), predict() is called exactly as
+    before — no keyword is added to the call — so this stays a strict
+    no-op for existing callers (currently RH's melody extraction)."""
+    predict_kwargs = {} if minimum_note_length is None else {"minimum_note_length": minimum_note_length}
+    _, _, note_events = predict(audio_path, ICASSP_2022_MODEL_PATH, **predict_kwargs)
     return [
         NoteEvent(
             start=start,

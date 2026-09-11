@@ -1,4 +1,4 @@
-from app.lh.extract import HARD_LH_RANGE, build_lh_part, cap_simultaneous_notes, extract_lh_notes
+from app.lh.extract import HARD_LH_RANGE, LH_MINIMUM_NOTE_LENGTH_MS, build_lh_part, cap_simultaneous_notes, extract_lh_notes
 from app.notation.types import NoteEvent
 
 
@@ -62,10 +62,30 @@ def test_extract_lh_notes_caps_to_max_voices(monkeypatch):
         NoteEvent(start=0.0, end=1.0, pitch=52, velocity=0.8),
         NoteEvent(start=0.0, end=1.0, pitch=55, velocity=0.1),
     ]
-    monkeypatch.setattr(lh_extract_module, "transcribe_audio_to_notes", lambda audio_path: fake_notes)
+    monkeypatch.setattr(lh_extract_module, "transcribe_audio_to_notes", lambda audio_path, **kwargs: fake_notes)
 
     notes = extract_lh_notes("fake/path.wav", max_voices=2)
     assert len(notes) == 2
+
+
+def test_extract_lh_notes_passes_the_tuned_minimum_note_length(monkeypatch):
+    import app.lh.extract as lh_extract_module
+
+    calls = []
+
+    def fake_transcribe(audio_path, **kwargs):
+        calls.append((audio_path, kwargs))
+        return []
+
+    monkeypatch.setattr(lh_extract_module, "transcribe_audio_to_notes", fake_transcribe)
+
+    extract_lh_notes("fake/path.wav")
+
+    assert len(calls) == 1
+    audio_path, kwargs = calls[0]
+    assert audio_path == "fake/path.wav"
+    assert kwargs == {"minimum_note_length": LH_MINIMUM_NOTE_LENGTH_MS}
+    assert LH_MINIMUM_NOTE_LENGTH_MS == 180
 
 
 def test_extract_lh_notes_detects_content_near_a4(synthetic_piano_wav):
