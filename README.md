@@ -75,17 +75,25 @@ real-time-or-slower for a full song.
 
 ## Stack
 
-- **Backend:** Python 3.9, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for Spec 2's RH vocal-melody and LH accompaniment transcription — neither is solo piano audio), [piano_transcription_inference](https://github.com/qiuqiangkong/piano_transcription_inference) (ByteDance's MAESTRO-trained high-resolution piano transcription model, used only for Spec 1's solo-piano audio — meaningfully more accurate than Basic Pitch on real piano recordings), [madmom](https://github.com/CPJKU/madmom) (neural beat tracker driving real tempo detection in both pipelines, with a librosa global-tempo estimate and then a fixed 120 BPM default as successive fallbacks), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
+- **Backend:** Python 3.11, FastAPI, [Basic Pitch](https://github.com/spotify/basic-pitch) (ML audio→MIDI, used for Spec 2's RH vocal-melody and LH accompaniment transcription — neither is solo piano audio), [piano_transcription_inference](https://github.com/qiuqiangkong/piano_transcription_inference) (ByteDance's MAESTRO-trained high-resolution piano transcription model, used only for Spec 1's solo-piano audio — meaningfully more accurate than Basic Pitch on real piano recordings), [madmom](https://github.com/CPJKU/madmom) (neural beat tracker driving real tempo detection in both pipelines, with a librosa global-tempo estimate and then a fixed 120 BPM default as successive fallbacks), [Demucs](https://github.com/facebookresearch/demucs) (ML stem separation, Spec 2 only), music21, librosa, yt-dlp, spotipy, pytest.
 - **Frontend:** React 18 + Vite + TypeScript, axios, [OpenSheetMusicDisplay](https://opensheetmusicdisplay.org/), html5-qrcode.
 
 ## Running it
 
 ### Backend
 
+Requires Python 3.11 (`brew install python@3.11` if you don't have it — newer
+music21 needs 3.10+, and macOS/Homebrew no longer ship 3.9).
+
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip
+# madmom (unmaintained since ~2022) needs numpy/Cython/scipy/mido already present
+# to build from its sdist, and must be installed with build isolation off — see
+# the comments on madmom/numpy/setuptools in requirements.txt for why.
+pip install "numpy>=1.26.4,<2.0" scipy cython mido "setuptools<81"
+pip install --no-build-isolation -r requirements.txt
 uvicorn app.main:app --reload
 ```
 

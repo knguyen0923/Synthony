@@ -8,10 +8,21 @@ torchlibrosa
 pretty_midi
 music21
 librosa
-madmom
+# PyPI's madmom 0.16.1 (unmaintained since ~2022) does not import on Python 3.10+
+# (`from collections import MutableSequence`, removed in 3.10). Installing from the
+# GitHub main branch at this pinned commit instead — it has the fix (and later numpy
+# API compatibility updates) but was never cut into a PyPI release. Installing this
+# line requires Cython, numpy, scipy and mido already present (madmom's setup.py
+# imports them directly rather than declaring them as PEP 517 build requirements) and
+# `pip install --no-build-isolation` for this package. See README's Backend setup.
+git+https://github.com/CPJKU/madmom.git@27f032e894#egg=madmom
 demucs
 scipy
-numpy<1.24  # madmom 0.16.1 is incompatible with numpy 2.x (compiled-extension ABI break, removed scalar aliases)
+numpy<1.24  # madmom is incompatible with numpy 2.x (compiled-extension ABI break, removed scalar aliases)
+# madmom and resampy (a librosa dependency) still import the legacy `pkg_resources` API at
+# runtime, which setuptools 81+ no longer bundles. See README's Backend setup for the full
+# install recipe this pin is part of.
+setuptools<81
 yt-dlp
 spotipy
 pytest
