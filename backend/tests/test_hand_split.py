@@ -2,9 +2,9 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from music21 import clef, note, stream
+from music21 import clef, expressions, note, stream
 
-from app.notation.types import NoteEvent
+from app.notation.types import NoteEvent, PedalEvent
 from app.notation.hand_split import (
     notes_to_grand_staff,
     get_hand_parts,
@@ -390,3 +390,167 @@ def test_grand_staff_with_no_key_signature_given_stays_key_of_c():
         xml = output_path.read_text()
 
     assert "<key>" not in xml
+
+
+def test_notes_to_grand_staff_attaches_pedal_mark_spanning_lh_notes():
+    """A pedal event should become a music21 PedalMark spanner anchored to
+    the actual LH notes nearest its start/end, so a pedal-inflated cluster
+    of notes is explained by "the pedal was down" in the notated score."""
+    # assign_hands sends a lone onset to RH (melody rule) — pair each LH
+    # note with a simultaneous RH note so these actually land in LH.
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0, 4.0])  # 1 quarterLength per second
+    notes = []
+    for i, lh_pitch in enumerate([40, 41, 42, 43]):
+        t = float(i)
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=80))       # RH
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=lh_pitch))  # LH
+    pedal_events = [PedalEvent(start=0.0, end=3.0)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert len(pedal_marks) == 1
+    spanned = pedal_marks[0].getSpannedElements()
+    assert [n.pitch.midi for n in spanned] == [40, 43]
+
+
+def test_notes_to_grand_staff_with_no_pedal_events_attaches_no_pedal_marks():
+    """pedal_events is optional and defaults to None — existing callers
+    (and Spec 2, which never has real pedal data) must see no behavior
+    change at all."""
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
+    score = notes_to_grand_staff(notes)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert pedal_marks == []
+
+
+def test_pedal_event_offset_one_grid_step_from_a_note_reuses_it():
+    """A pedal event's start/end rarely lands exactly on a note's offset —
+    close enough (within one notation-grid step) should still reuse that
+    note as the spanner anchor rather than inserting a redundant one."""
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0, 4.0])
+    notes = []
+    for i, lh_pitch in enumerate([40, 41, 42]):
+        t = float(i)
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=80))       # RH
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=lh_pitch))  # LH
+    # 0.875/2.125 QL are each exactly one NOTATION_GRID step (0.125) away
+    # from the LH notes at 1.0/2.0 — within PEDAL_ANCHOR_TOLERANCE.
+    pedal_events = [PedalEvent(start=0.875, end=2.125)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert len(pedal_marks) == 1
+    spanned = pedal_marks[0].getSpannedElements()
+    assert [n.pitch.midi for n in spanned] == [41, 42]
+
+
+def test_pedal_event_far_from_any_lh_note_is_skipped():
+    """A real transcription's LH content can be sparse for long stretches
+    while the piano model still reports pedal activity throughout (observed
+    on real audio: ~23 LH notes across a 132s piece, but 125 pedal events).
+    Reusing whatever LH note happens to be nearest — no matter how far —
+    would mislocate the pedal mark. Anchoring to a synthetic inserted rest
+    instead was tried and rejected: real-audio verification showed music21's
+    own makeNotation() pass during MusicXML export does not reliably
+    preserve such a rest's identity, silently orphaning the spanner (see
+    PEDAL_ANCHOR_TOLERANCE's comment in hand_split.py) — so a pedal event
+    too far from every existing LH note/rest is skipped instead, trading
+    coverage for guaranteed-correct output."""
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0, 4.0])
+    notes = []
+    for i, lh_pitch in enumerate([40, 41, 42]):
+        t = float(i)
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=80))       # RH
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=lh_pitch))  # LH
+    pedal_events = [PedalEvent(start=0.4, end=2.4)]  # 0.375/2.375 QL, > one grid step from any LH note
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert pedal_marks == []
+
+
+def test_degenerate_pedal_event_after_rounding_is_skipped():
+    """A pedal event whose start and end round to the same notation-grid
+    step (e.g. a sub-32nd-note blip) has nothing to notate — must not
+    produce a zero-width spanner."""
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
+    pedal_events = [PedalEvent(start=0.01, end=0.02)]
+
+    score = notes_to_grand_staff(notes, pedal_events=pedal_events)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert pedal_marks == []
+
+
+def test_pedal_event_collapsing_onto_the_same_single_anchor_is_skipped():
+    """When the LH part has only one note, and both the pedal's start and
+    end are each within tolerance of it (but not of each other), both ends
+    resolve to that same note — skip rather than emit a spanner with
+    identical start/end elements."""
+    notes = [
+        NoteEvent(start=1.0, end=2.0, pitch=80),  # -> RH
+        NoteEvent(start=1.0, end=2.0, pitch=48),  # -> LH, the only LH note, at offset 1.0
+    ]
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0])
+    # 0.875/1.125 QL are each one grid step from the LH note at 1.0, but
+    # 0.25 QL apart from each other (beyond tolerance of one another).
+    pedal_events = [PedalEvent(start=0.875, end=1.125)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert pedal_marks == []
+
+
+def test_pedal_mark_survives_dynamic_clef_change_pass():
+    """_apply_dynamic_clef_changes removes/reinserts clef.Clef instances on
+    the LH part after pedal marks are attached — must not disturb the
+    PedalMark spanner (a real risk if insertion order matters to music21's
+    stream/spanner model)."""
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0, 4.0])
+    notes = []
+    for i in range(4):
+        t = float(i)
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=80))       # melody -> RH
+        notes.append(NoteEvent(start=t, end=t + 1.0, pitch=68 + i))  # accompaniment -> LH, sustained high register
+    pedal_events = [PedalEvent(start=0.0, end=3.0)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+    _, lh = get_hand_parts(score)
+
+    clefs = list(lh.getElementsByClass(clef.Clef))
+    assert len(clefs) == 1 and clefs[0].sign == "G"  # dynamic clef-change pass ran (swapped bass -> treble)
+
+    pedal_marks = list(score.recurse().getElementsByClass(expressions.PedalMark))
+    assert len(pedal_marks) == 1
+    spanned = pedal_marks[0].getSpannedElements()
+    assert [n.pitch.midi for n in spanned] == [68, 71]
+
+
+def test_pedal_mark_exports_start_and_stop_pedal_elements_in_musicxml():
+    """End-to-end confirmation that the PedalMark spanner round-trips to a
+    real MusicXML <direction><pedal .../></direction> pair, not just a
+    music21-internal object."""
+    beat_map = BeatMap([0.0, 1.0, 2.0, 3.0, 4.0])
+    notes = [
+        NoteEvent(start=0.0, end=1.0, pitch=80),  # RH
+        NoteEvent(start=0.0, end=1.0, pitch=40),  # LH
+        NoteEvent(start=3.0, end=4.0, pitch=80),  # RH
+        NoteEvent(start=3.0, end=4.0, pitch=43),  # LH
+    ]
+    pedal_events = [PedalEvent(start=0.0, end=3.0)]
+
+    score = notes_to_grand_staff(notes, beat_map=beat_map, pedal_events=pedal_events)
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_pedal_export.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<pedal" in xml
+    assert 'type="start"' in xml
+    assert 'type="stop"' in xml

@@ -99,7 +99,13 @@ def test_transcribe_no_pitched_content_cleans_up_orphan_song_dir(monkeypatch, sy
     failures — including any audio file already written to disk."""
     import app.main as main_module
 
-    monkeypatch.setattr(main_module, "transcribe_piano_audio_to_notes", lambda path: [])
+    from app.transcription.audio_to_midi import PianoTranscriptionResult
+
+    monkeypatch.setattr(
+        main_module,
+        "transcribe_piano_audio_to_notes",
+        lambda path: PianoTranscriptionResult(notes=[], pedal_events=[]),
+    )
 
     captured_song_ids = []
     real_new_song_id = main_module.new_song_id

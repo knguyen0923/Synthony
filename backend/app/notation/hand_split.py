@@ -1,10 +1,10 @@
 import copy
 from typing import Optional
 
-from music21 import stream, note, clef, layout, metadata, key, pitch
+from music21 import stream, note, clef, layout, metadata, key, pitch, expressions
 
 from app.notation.hand_assignment import assign_hands
-from app.notation.types import NoteEvent
+from app.notation.types import NoteEvent, PedalEvent
 from app.notation.voice_cap import cap_simultaneous_notes
 from app.tempo.detect import BeatMap
 
@@ -57,6 +57,77 @@ def _to_music21_note(event: NoteEvent, beat_map: BeatMap) -> note.Note:
     duration = max(duration, NOTATION_GRID)
     m21_note.duration.quarterLength = _round_to_grid(duration, NOTATION_GRID)
     return m21_note
+
+
+# How close an existing LH note/rest must be to a pedal event's target
+# offset to be usable as its spanner anchor. A real transcription's LH
+# content can be sparse for long stretches (e.g. only ~23 LH notes across
+# a 132s piece was observed on the Moonlight Sonata corpus) while the
+# piano model still reports pedal presses/releases throughout — reusing
+# whatever LH note happens to be nearest, no matter how far away, would
+# silently mislocate the pedal mark (or even collapse distinct start/end
+# times onto the same note). One notation-grid step keeps the anchor
+# visually indistinguishable from "exactly there" while still being a
+# real, deliberate match.
+#
+# When nothing is close enough, the pedal event is skipped rather than
+# anchored to a synthetic inserted rest: empirically (real-audio
+# verification against the Moonlight Sonata corpus), a hidden Rest
+# inserted purely to anchor a spanner does not reliably survive music21's
+# own makeNotation() measure-building pass during MusicXML export — it
+# gets silently replaced by an auto-generated filler rest, orphaning the
+# spanner and dropping (or corrupting) its <pedal> element. Marks anchored
+# to real, already-notated notes/rests round-tripped correctly every time
+# in the same verification; only the synthetic-anchor path was unreliable.
+# So coverage of sparse-LH passages is intentionally incomplete — a
+# skipped pedal event is deliberately preferred over broken MusicXML.
+PEDAL_ANCHOR_TOLERANCE = NOTATION_GRID
+
+
+def _anchor_within_tolerance(
+    offset: float, candidates: list[note.GeneralNote]
+) -> Optional[note.GeneralNote]:
+    """Find the note/rest in `candidates` at/near `offset` (within
+    PEDAL_ANCHOR_TOLERANCE) to anchor one end of a PedalMark spanner (which
+    must span real GeneralNote objects, not raw timestamps). Returns None
+    when nothing is close enough — see PEDAL_ANCHOR_TOLERANCE's comment for
+    why this deliberately does not fall back to inserting a synthetic
+    anchor."""
+    if not candidates:
+        return None
+    nearest = min(candidates, key=lambda n: abs(n.offset - offset))
+    if abs(nearest.offset - offset) <= PEDAL_ANCHOR_TOLERANCE:
+        return nearest
+    return None
+
+
+def _attach_pedal_marks(lh: stream.Part, pedal_events: list[PedalEvent], beat_map: BeatMap) -> None:
+    """Attach each pedal event as a music21 PedalMark spanner anchored to
+    the LH part's existing notes/rests, so a passage that looks like a
+    dense pile of "simultaneous" notes (an artifact of pedal-inflated
+    offsets, see MAX_SIMULTANEOUS_VOICES_PER_HAND above) is visually
+    explained by "the pedal was down" rather than looking arbitrary.
+    Purely additive notation — does not touch note pitches, durations, or
+    voice counts. A pedal event too far from any existing LH note/rest (on
+    either end) is skipped rather than notated inaccurately or unreliably
+    — see PEDAL_ANCHOR_TOLERANCE."""
+    candidates = list(lh.flatten().notesAndRests)
+    for event in pedal_events:
+        start_offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
+        end_offset = _round_to_grid(_seconds_to_quarter_length(event.end, beat_map), NOTATION_GRID)
+        if end_offset <= start_offset:
+            continue  # degenerate/zero-length pedal event after rounding — nothing to notate
+
+        start_anchor = _anchor_within_tolerance(start_offset, candidates)
+        end_anchor = _anchor_within_tolerance(end_offset, candidates)
+        if start_anchor is None or end_anchor is None or start_anchor is end_anchor:
+            continue
+
+        pedal_mark = expressions.PedalMark()
+        pedal_mark.pedalForm = expressions.PedalForm.Line
+        pedal_mark.pedalType = expressions.PedalType.Sustain
+        pedal_mark.addSpannedElements([start_anchor, end_anchor])
+        lh.insert(0, pedal_mark)
 
 
 def _apply_dynamic_clef_changes(part: stream.Part, home_clef_cls, away_clef_cls, is_away) -> None:
@@ -156,7 +227,10 @@ def build_grand_staff_score(
 
 
 def notes_to_grand_staff(
-    notes: list[NoteEvent], title: Optional[str] = None, beat_map: Optional[BeatMap] = None
+    notes: list[NoteEvent],
+    title: Optional[str] = None,
+    beat_map: Optional[BeatMap] = None,
+    pedal_events: Optional[list[PedalEvent]] = None,
 ) -> stream.Score:
     """Assign notes to right/left hand via a continuity-aware dynamic-
     programming search (app.notation.hand_assignment.assign_hands) that
@@ -166,7 +240,12 @@ def notes_to_grand_staff(
     beat_map converts note timing (seconds) to notated rhythm
     (quarterLength) — pass a real one (from app.tempo.detect.detect_beat_map)
     for audio with actual tempo variation; omitting it keeps the previous
-    fixed-120-BPM behavior via BeatMap.constant."""
+    fixed-120-BPM behavior via BeatMap.constant.
+
+    pedal_events, when given, are attached to the LH part as music21
+    PedalMark spanners (Spec 1's Hard tier only — see
+    app.transcription.audio_to_midi.transcribe_piano_audio_to_notes, the
+    only source of real pedal data)."""
     beat_map = beat_map or BeatMap.constant(SECONDS_PER_QUARTER)
     rh = stream.Part(id="RH")
     rh.append(clef.TrebleClef())
@@ -182,6 +261,9 @@ def notes_to_grand_staff(
     for event in lh_notes:
         offset = _round_to_grid(_seconds_to_quarter_length(event.start, beat_map), NOTATION_GRID)
         lh.insert(offset, _to_music21_note(event, beat_map))
+
+    if pedal_events:
+        _attach_pedal_marks(lh, pedal_events, beat_map)
 
     return build_grand_staff_score(rh, lh, title=title)
 

@@ -7,3 +7,9 @@ class NoteEvent:
     end: float         # seconds
     pitch: int         # MIDI note number, 0-127
     velocity: float = 0.8  # 0.0-1.0
+
+
+@dataclass(frozen=True)
+class PedalEvent:
+    start: float       # seconds, pedal press (onset)
+    end: float         # seconds, pedal release (offset)
