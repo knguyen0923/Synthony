@@ -47,15 +47,15 @@ export function InputScreen({ onSuccess }: InputScreenProps) {
       <div className="input-screen__panel">
         {mode === "transcribe" ? (
           <>
-            <UploadForm onSuccess={onSuccess} submitFile={transcribeFile} submitLink={transcribeLink} />
+            <UploadForm key="transcribe-upload" onSuccess={onSuccess} submitFile={transcribeFile} submitLink={transcribeLink} />
             <div className="upload-form__divider">or</div>
-            <QrScanButton onSuccess={onSuccess} submitLink={transcribeLink} />
+            <QrScanButton key="transcribe-qr" onSuccess={onSuccess} submitLink={transcribeLink} />
           </>
         ) : (
           <>
-            <UploadForm onSuccess={onSuccess} submitFile={arrangeFile} submitLink={arrangeLink} />
+            <UploadForm key="arrange-upload" onSuccess={onSuccess} submitFile={arrangeFile} submitLink={arrangeLink} />
             <div className="upload-form__divider">or</div>
-            <QrScanButton onSuccess={onSuccess} submitLink={arrangeLink} />
+            <QrScanButton key="arrange-qr" onSuccess={onSuccess} submitLink={arrangeLink} />
           </>
         )}
       </div>

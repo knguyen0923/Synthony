@@ -106,4 +106,34 @@ describe("UploadForm", () => {
     expect(submitFile).toHaveBeenCalledWith(file, expect.any(Function));
     expect(submitLink).not.toHaveBeenCalled();
   });
+
+  it("ignores a second file-change while the first submission is still in flight", async () => {
+    const user = userEvent.setup();
+    const { promise, resolve } = deferred<TranscribeResponse>();
+    const submitFile = vi.fn().mockReturnValue(promise);
+    const file = new File(["fake audio bytes"], "song.mp3", { type: "audio/mpeg" });
+
+    render(<UploadForm onSuccess={vi.fn()} submitFile={submitFile} submitLink={vi.fn()} />);
+
+    const input = screen.getByLabelText("Upload a file") as HTMLInputElement;
+    await user.upload(input, file);
+    await user.upload(input, file);
+
+    resolve(RESULT);
+    await waitFor(() => expect(screen.queryByText("Working…")).not.toBeInTheDocument());
+    expect(submitFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets the file input value after handling so the same file can be re-selected", async () => {
+    const user = userEvent.setup();
+    const submitFile = vi.fn().mockRejectedValue(new Error("boom"));
+    const file = new File(["fake audio bytes"], "song.mp3", { type: "audio/mpeg" });
+
+    render(<UploadForm onSuccess={vi.fn()} submitFile={submitFile} submitLink={vi.fn()} />);
+
+    const input = screen.getByLabelText("Upload a file") as HTMLInputElement;
+    await user.upload(input, file);
+
+    await waitFor(() => expect(input.value).toBe(""));
+  });
 });

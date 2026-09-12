@@ -26,7 +26,14 @@ export function DifficultyTabs({ result }: DifficultyTabsProps) {
           </button>
         ))}
       </div>
-      <ScoreViewer musicXmlUrl={result.difficulties[active].musicxml_url} title={`${result.title} (${active})`} />
+      {result.difficulties[active] ? (
+        <ScoreViewer
+          musicXmlUrl={result.difficulties[active].musicxml_url}
+          title={`${result.title} (${active})`}
+        />
+      ) : (
+        <p className="difficulty-tabs__missing">This difficulty tier isn't available for this song.</p>
+      )}
     </div>
   );
 }

@@ -39,4 +39,26 @@ describe("DifficultyTabs", () => {
     expect(screen.getByRole("tab", { name: "Hard" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Easy" })).toHaveAttribute("aria-selected", "false");
   });
+
+  it("shows a fallback message instead of crashing when the active tier is missing from difficulties", async () => {
+    const user = userEvent.setup();
+    const resultMissingHard = {
+      song_id: "song-1",
+      title: "Test Song",
+      difficulties: {
+        easy: { musicxml_url: "/easy.musicxml" },
+        medium: { musicxml_url: "/medium.musicxml" },
+        // "hard" intentionally omitted -- simulates a real backend response
+        // where one tier failed to generate (TypeScript's Record<Difficulty,
+        // DifficultyLink> can't express this, but nothing at runtime
+        // enforces it either).
+      },
+    } as unknown as TranscribeResponse;
+
+    render(<DifficultyTabs result={resultMissingHard} />);
+    await user.click(screen.getByRole("tab", { name: "Hard" }));
+
+    expect(screen.queryByTestId("score-viewer")).not.toBeInTheDocument();
+    expect(screen.getByText(/isn't available/i)).toBeInTheDocument();
+  });
 });

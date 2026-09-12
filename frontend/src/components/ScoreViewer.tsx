@@ -46,10 +46,16 @@ export function ScoreViewer({ musicXmlUrl, title }: ScoreViewerProps) {
     let cancelled = false;
 
     (async () => {
-      await osmd.load(resolveFullUrl(musicXmlUrl));
-      if (!cancelled) {
-        osmd.zoom = zoomRef.current;
-        osmd.render();
+      try {
+        await osmd.load(resolveFullUrl(musicXmlUrl));
+        if (!cancelled) {
+          osmd.zoom = zoomRef.current;
+          osmd.render();
+        }
+      } catch {
+        if (!cancelled) {
+          setActionError("Couldn't load this score — the file may be missing or corrupt.");
+        }
       }
     })();
 

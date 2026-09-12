@@ -34,9 +34,17 @@ export function HistoryTab({ onSelect }: HistoryTabProps) {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     listSongs()
-      .then(setSongs)
-      .catch(() => setError("Couldn't load history."));
+      .then((result) => {
+        if (!cancelled) setSongs(result);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't load history.");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const filteredSongs = songs?.filter((song) =>

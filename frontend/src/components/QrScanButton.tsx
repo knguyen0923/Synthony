@@ -28,22 +28,27 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
     // has resolved yet so cleanup only calls stop() once it's safe to.
     let cancelled = false;
     let started = false;
+    let handled = false;
 
     scanner
       .start(
         { facingMode: "environment" },
         { fps: 10, qrbox: 250 },
         async (decodedText) => {
+          if (handled) return;
+          handled = true;
           await scanner.stop();
-          setScanning(false);
           setStatusLabel("Working…");
           try {
-            const result = await submitLink(decodedText, setStatusLabel);
-            onSuccess(result);
+            const result = await submitLink(decodedText, (label) => {
+              if (!cancelled) setStatusLabel(label);
+            });
+            if (!cancelled) onSuccess(result);
           } catch (err) {
-            setError(extractErrorMessage(err, "Couldn't process the scanned link."));
+            if (!cancelled) setError(extractErrorMessage(err, "Couldn't process the scanned link."));
           } finally {
-            setStatusLabel(null);
+            setScanning(false);
+            if (!cancelled) setStatusLabel(null);
           }
         },
         () => {
@@ -59,7 +64,10 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
           started = true;
         }
       })
-      .catch(() => setError("Could not access the camera."));
+      .catch(() => {
+        setError("Could not access the camera.");
+        setScanning(false);
+      });
 
     return () => {
       cancelled = true;
@@ -75,7 +83,13 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
   return (
     <div className="qr-scan-button">
       <label className="upload-form__label">Scan a QR code</label>
-      <button onClick={() => setScanning(true)} disabled={scanning}>
+      <button
+        onClick={() => {
+          setError(null);
+          setScanning(true);
+        }}
+        disabled={scanning}
+      >
         Scan QR code
       </button>
       {scanning && <div id={SCANNER_ELEMENT_ID} className="qr-scan-button__region" />}
