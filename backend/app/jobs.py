@@ -9,7 +9,7 @@ _jobs: dict[str, "Job"] = {}
 
 @dataclass
 class Job:
-    status: str = "separating"
+    status: str = "queued"
     result: Optional[dict] = None
     detail: Optional[str] = None
 

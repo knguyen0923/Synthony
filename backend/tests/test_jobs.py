@@ -1,10 +1,10 @@
 from app.jobs import create_job, get_job, set_failed, set_result, set_status
 
 
-def test_create_job_starts_in_separating_status():
+def test_create_job_starts_in_queued_status():
     job_id = create_job()
     job = get_job(job_id)
-    assert job.status == "separating"
+    assert job.status == "queued"
     assert job.result is None
     assert job.detail is None
 

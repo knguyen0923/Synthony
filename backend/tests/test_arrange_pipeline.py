@@ -76,3 +76,78 @@ def test_mix_wav_files_sums_two_tones_without_clipping(tmp_path):
     assert len(mixed_audio) == len(tone_a)
     assert np.max(np.abs(mixed_audio)) <= 32767
     assert np.max(np.abs(mixed_audio)) > 0  # not silent
+
+
+import threading
+import time
+
+from app.arrange_pipeline import run_arrange_pipeline
+from app.jobs import create_job, get_job
+from app.separation.types import Stems
+
+
+def test_run_arrange_pipeline_waits_for_a_job_slot(tmp_path, monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+    import app.concurrency as concurrency_module
+
+    # job_slot() (used both by run_arrange_pipeline, via its `from
+    # app.concurrency import job_slot`, and by the holder thread below) is
+    # a plain function whose closure always resolves `_slots` against
+    # app.concurrency's own module globals -- monkeypatching
+    # pipeline_module._slots would not exist (arrange_pipeline.py never
+    # binds that name) and, even if it did, wouldn't affect the semaphore
+    # job_slot() actually acquires. Patch the real one.
+    monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
+
+    fake_notes = [NoteEvent(start=0.0, end=0.5, pitch=72)]
+    fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=tmp_path / "vocals.wav", drums=tmp_path / "drums.wav",
+            bass=tmp_path / "bass.wav", other=tmp_path / "other.wav",
+        ),
+    )
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: fake_notes)
+    monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: fake_lh_notes)
+    monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
+    monkeypatch.setattr(pipeline_module, "detect_beat_map", lambda audio_path: BeatMap.constant(0.5))
+
+    job_id = create_job()
+    assert get_job(job_id).status == "queued"
+
+    # Occupy the only slot from this thread so the pipeline (run in its own
+    # thread below) has to actually wait for it.
+    from app.concurrency import job_slot as real_job_slot
+
+    holding = threading.Event()
+    release_holder = threading.Event()
+
+    def hold_slot():
+        with real_job_slot():
+            holding.set()
+            release_holder.wait(timeout=2.0)
+
+    holder_thread = threading.Thread(target=hold_slot)
+    holder_thread.start()
+    holding.wait(timeout=1.0)
+
+    pipeline_thread = threading.Thread(
+        target=run_arrange_pipeline,
+        kwargs=dict(
+            job_id=job_id, audio_path="fake.wav", title="Song",
+            source_type="upload", source_url=None, song_id="fake-song-id",
+            dest_dir=tmp_path,
+        ),
+    )
+    pipeline_thread.start()
+
+    time.sleep(0.1)
+    assert get_job(job_id).status == "queued"  # still waiting on the held slot
+
+    release_holder.set()
+    holder_thread.join()
+    pipeline_thread.join(timeout=5.0)
+
+    assert get_job(job_id).status == "done"

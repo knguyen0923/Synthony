@@ -7,6 +7,7 @@ import numpy as np
 from scipy.io import wavfile
 
 from app.chords.detect import detect_key_and_tempo
+from app.concurrency import job_slot
 from app.difficulty.easy import EASY_GRID, EASY_LH_RANGE, EASY_RH_RANGE
 from app.difficulty.medium import MAX_VOICING_TONES, MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
 from app.difficulty.quantize import quantize_part
@@ -82,30 +83,32 @@ def run_arrange_pipeline(
     dest_dir: Path,
 ) -> None:
     try:
-        set_status(job_id, "separating")
-        stems = separate_stems(audio_path, dest_dir / "stems")
+        logger.info("job %s: waiting for a free job slot", job_id)
+        with job_slot(blocking=True):
+            set_status(job_id, "separating")
+            stems = separate_stems(audio_path, dest_dir / "stems")
 
-        set_status(job_id, "extracting_melody")
-        melody_notes = extract_melody_notes(str(stems.vocals))
+            set_status(job_id, "extracting_melody")
+            melody_notes = extract_melody_notes(str(stems.vocals))
 
-        set_status(job_id, "detecting_key")
-        harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
-        detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
-        beat_map = detect_beat_map(str(harmony_path))
+            set_status(job_id, "detecting_key")
+            harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
+            detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
+            beat_map = detect_beat_map(str(harmony_path))
 
-        set_status(job_id, "arranging")
-        lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
-        rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
+            set_status(job_id, "arranging")
+            lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
+            rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
 
-        difficulties = {}
-        key_signature = key_signature_from_tonic(*detected_key)
-        for tier in ("easy", "medium", "hard"):
-            score = build_grand_staff_score(rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature)
-            export_musicxml(score, dest_dir / f"{tier}.musicxml")
-            difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
+            difficulties = {}
+            key_signature = key_signature_from_tonic(*detected_key)
+            for tier in ("easy", "medium", "hard"):
+                score = build_grand_staff_score(rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature)
+                export_musicxml(score, dest_dir / f"{tier}.musicxml")
+                difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 
-        write_metadata(song_id, title=title, source_type=source_type, source_url=source_url, pipeline="arrange")
-        evict_oldest_songs()
+            write_metadata(song_id, title=title, source_type=source_type, source_url=source_url, pipeline="arrange")
+            evict_oldest_songs()
 
         set_result(job_id, {"song_id": song_id, "title": title, "difficulties": difficulties})
     except Exception as exc:
