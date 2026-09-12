@@ -88,6 +88,12 @@ class ArrangeSubmitResponse(BaseModel):
     status: str
 
 
+class HealthResponse(BaseModel):
+    status: str
+    ffmpeg_available: bool
+    piano_model_downloaded: bool
+
+
 def _difficulty_links(song_id: str) -> dict[str, DifficultyLink]:
     return {
         tier: DifficultyLink(musicxml_url=f"/storage/{song_id}/{tier}.musicxml")
@@ -136,7 +142,7 @@ async def _ingest_and_validate_duration(
     return ingested
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 def health() -> dict[str, object]:
     return {
         "status": "ok",

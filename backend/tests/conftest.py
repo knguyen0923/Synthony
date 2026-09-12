@@ -8,6 +8,7 @@ import pretty_midi
 import pytest
 from scipy.io import wavfile
 
+import app.logging_config as logging_config_module
 import app.storage as storage_module
 
 _FLUIDSYNTH_SOUNDFONT = Path(pretty_midi.__file__).parent / "TimGM6mb.sf2"
@@ -23,6 +24,16 @@ _FLUIDSYNTH_SOUNDFONT = Path(pretty_midi.__file__).parent / "TimGM6mb.sf2"
 # backend/storage/ directory: tests never touch the real STORAGE_ROOT at all.
 _TEST_STORAGE_ROOT = Path(tempfile.mkdtemp(prefix="synthony-test-storage-"))
 storage_module.STORAGE_ROOT = _TEST_STORAGE_ROOT
+
+# Same isolation, same reasoning, for the rotating file handler's log
+# directory: app.main's module-level configure_logging() call (and any
+# test that reloads it) would otherwise write into the real
+# backend/logs/app.log, polluting the one file meant to be a durable
+# crash-diagnosis trail with test noise. Individual tests in
+# test_logging_config.py further monkeypatch LOG_DIR per-test (overriding
+# this default) to assert on rotation/fallback behavior in isolation.
+_TEST_LOG_DIR = Path(tempfile.mkdtemp(prefix="synthony-test-logs-"))
+logging_config_module.LOG_DIR = _TEST_LOG_DIR
 
 
 @pytest.fixture

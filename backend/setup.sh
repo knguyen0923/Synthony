@@ -8,7 +8,7 @@ if ! command -v python3.11 >/dev/null 2>&1; then
   exit 1
 fi
 
-python3.11 -m venv .venv
+python3.11 -m venv .venv --clear
 source .venv/bin/activate
 pip install --upgrade pip
 

@@ -1,7 +1,26 @@
+import logging
+
+import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture
+def _restore_root_logger_state():
+    """Same purpose as test_logging_config.py's fixture of the same name:
+    importlib.reload(main_module) (used by the startup-warning test below)
+    re-runs configure_logging(), which calls
+    logging.basicConfig(force=True) and permanently replaces the root
+    logger's level and handlers for the rest of the pytest session
+    otherwise."""
+    root = logging.getLogger()
+    original_level = root.level
+    original_handlers = list(root.handlers)
+    yield
+    root.level = original_level
+    root.handlers = original_handlers
 
 
 def test_health_check_returns_ok():
@@ -44,7 +63,7 @@ def test_health_check_reports_missing_ffmpeg_and_undownloaded_model(monkeypatch)
     }
 
 
-def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch):
+def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch, _restore_root_logger_state):
     import importlib
     import logging
     import shutil as shutil_module
