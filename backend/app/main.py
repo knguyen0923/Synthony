@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTa
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from app.arrange_pipeline import run_arrange_pipeline
 from app.concurrency import NoJobSlotAvailable, job_slot
@@ -168,6 +169,33 @@ def remove_song(song_id: str) -> None:
     delete_song(song_id)
 
 
+def _run_transcription_pipeline(audio_path: str, title: str, dest_dir: Path) -> None:
+    """The CPU-bound half of /transcribe: piano transcription, beat
+    detection, notation, and MusicXML export. Called via run_in_threadpool
+    from the transcribe() route handler so a long transcription runs on a
+    worker thread instead of blocking the event loop (and therefore every
+    other concurrent request) for its full duration."""
+    with job_slot(blocking=False):
+        transcription = transcribe_piano_audio_to_notes(audio_path)
+        notes = transcription.notes
+        if not notes:
+            raise HTTPException(status_code=422, detail="No pitched content detected")
+
+        beat_map = detect_beat_map(audio_path)
+
+        score = notes_to_grand_staff(
+            notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events
+        )
+        variants = generate_variants(score)
+
+        for tier, variant_score in (
+            ("easy", variants.easy),
+            ("medium", variants.medium),
+            ("hard", variants.hard),
+        ):
+            export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
+
+
 @app.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe(
     audio_file: Optional[UploadFile] = File(None),
@@ -183,25 +211,7 @@ async def transcribe(
 
         title = ingested.title
         try:
-            with job_slot(blocking=False):
-                transcription = transcribe_piano_audio_to_notes(str(ingested.path))
-                notes = transcription.notes
-                if not notes:
-                    raise HTTPException(status_code=422, detail="No pitched content detected")
-
-                beat_map = detect_beat_map(str(ingested.path))
-
-                score = notes_to_grand_staff(
-                    notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events
-                )
-                variants = generate_variants(score)
-
-                for tier, variant_score in (
-                    ("easy", variants.easy),
-                    ("medium", variants.medium),
-                    ("hard", variants.hard),
-                ):
-                    export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
+            await run_in_threadpool(_run_transcription_pipeline, str(ingested.path), title, dest_dir)
         except NoJobSlotAvailable as exc:
             logger.warning("transcribe rejected for song_id=%s: %s", song_id, exc)
             raise HTTPException(status_code=503, detail=str(exc)) from exc

@@ -69,6 +69,46 @@ def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch):
     assert any("ffmpeg" in record.getMessage().lower() for record in records)
 
 
+def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monkeypatch, synthetic_piano_wav):
+    """Regression test for moving /transcribe's CPU-bound pipeline onto a
+    worker thread via run_in_threadpool: before that fix, the whole
+    single-threaded event loop was blocked for the pipeline's full
+    duration, so even an unrelated /health request had to wait behind it.
+    This starts a slow /transcribe in a background thread and confirms
+    /health still responds promptly while it's still "running" (the
+    mocked transcription blocks on a threading.Event for up to 5s)."""
+    import threading
+    import time
+    import app.main as main_module
+    from app.transcription.audio_to_midi import PianoTranscriptionResult
+
+    release = threading.Event()
+
+    def _slow_then_empty(audio_path):
+        release.wait(timeout=5.0)
+        return PianoTranscriptionResult(notes=[], pedal_events=[])
+
+    monkeypatch.setattr(main_module, "transcribe_piano_audio_to_notes", _slow_then_empty)
+
+    def _make_slow_transcribe_request():
+        with open(synthetic_piano_wav, "rb") as f:
+            client.post("/transcribe", files={"audio_file": ("slow.wav", f, "audio/wav")})
+
+    thread = threading.Thread(target=_make_slow_transcribe_request)
+    thread.start()
+    time.sleep(0.3)  # let the request actually reach the mocked, blocking call
+
+    start = time.monotonic()
+    health_response = client.get("/health")
+    elapsed = time.monotonic() - start
+
+    release.set()
+    thread.join(timeout=5.0)
+
+    assert health_response.status_code == 200
+    assert elapsed < 1.0, f"/health took {elapsed:.2f}s -- /transcribe is still blocking the event loop"
+
+
 from pathlib import Path
 
 from app.storage import STORAGE_ROOT
