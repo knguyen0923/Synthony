@@ -16,6 +16,18 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
   const [statusLabel, setStatusLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  // Tracks whether the component itself is still mounted, independent of the
+  // scanning-effect's own cleanup (which also runs when a successful scan
+  // flips `scanning` back to false). State updates after a real scan success
+  // must still land even though that effect cleanup fires.
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!scanning) return;
@@ -38,17 +50,19 @@ export function QrScanButton({ onSuccess, submitLink }: QrScanButtonProps) {
           if (handled) return;
           handled = true;
           await scanner.stop();
+          setScanning(false);
           setStatusLabel("Working…");
           try {
             const result = await submitLink(decodedText, (label) => {
-              if (!cancelled) setStatusLabel(label);
+              if (isMountedRef.current) setStatusLabel(label);
             });
-            if (!cancelled) onSuccess(result);
+            if (isMountedRef.current) onSuccess(result);
           } catch (err) {
-            if (!cancelled) setError(extractErrorMessage(err, "Couldn't process the scanned link."));
+            if (isMountedRef.current) {
+              setError(extractErrorMessage(err, "Couldn't process the scanned link."));
+            }
           } finally {
-            setScanning(false);
-            if (!cancelled) setStatusLabel(null);
+            if (isMountedRef.current) setStatusLabel(null);
           }
         },
         () => {
