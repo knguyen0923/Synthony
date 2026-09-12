@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import tempfile
@@ -18,6 +19,7 @@ from app.transcription.audio_to_midi import transcribe_piano_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
 from app.export import export_musicxml
+from app.logging_config import configure_logging
 from app.storage import (
     new_song_id,
     song_dir,
@@ -38,6 +40,9 @@ SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
 
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 app.add_middleware(
@@ -178,12 +183,19 @@ async def transcribe(
 
         write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
         evict_oldest_songs()
+    except HTTPException:
+        # Expected control flow (bad/no input, duration cap, no pitched
+        # content) — cleanup happens the same as any other failure, but
+        # this isn't a bug, so it doesn't get an ERROR-level stack trace.
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
     except Exception:
         # song_dir() already created dest_dir before any of the above ran;
-        # any failure past that point (a rejected upload, a duration-cap
-        # violation, no pitched content, a downloaded-but-unusable YouTube
-        # file, ...) must not leave an orphan directory — or, for YouTube
-        # input, an orphan downloaded audio file — behind under STORAGE_ROOT.
+        # any failure past that point (a downloaded-but-unusable YouTube
+        # file, an unexpected model crash, ...) must not leave an orphan
+        # directory — or, for YouTube input, an orphan downloaded audio
+        # file — behind under STORAGE_ROOT.
+        logger.exception("transcribe failed for song_id=%s", song_id)
         shutil.rmtree(dest_dir, ignore_errors=True)
         raise
 

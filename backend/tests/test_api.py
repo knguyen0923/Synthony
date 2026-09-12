@@ -129,6 +129,54 @@ def test_transcribe_no_pitched_content_cleans_up_orphan_song_dir(monkeypatch, sy
         assert not (STORAGE_ROOT / song_id).exists()
 
 
+import logging
+
+import pytest
+
+
+def test_transcribe_unexpected_failure_logs_the_exception(monkeypatch, caplog, synthetic_piano_wav):
+    import app.main as main_module
+
+    def boom(path):
+        raise RuntimeError("model exploded")
+
+    monkeypatch.setattr(main_module, "transcribe_piano_audio_to_notes", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        with open(synthetic_piano_wav, "rb") as f:
+            with pytest.raises(RuntimeError, match="model exploded"):
+                client.post(
+                    "/transcribe",
+                    files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+                )
+
+    assert "transcribe failed" in caplog.text
+
+
+def test_transcribe_expected_validation_failure_does_not_log_an_error(monkeypatch, caplog, synthetic_piano_wav):
+    """A 422 "no pitched content" outcome is expected control flow, not a
+    bug — it shouldn't produce an ERROR-level stack trace the way a genuine
+    crash does."""
+    import app.main as main_module
+    from app.transcription.audio_to_midi import PianoTranscriptionResult
+
+    monkeypatch.setattr(
+        main_module,
+        "transcribe_piano_audio_to_notes",
+        lambda path: PianoTranscriptionResult(notes=[], pedal_events=[]),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        with open(synthetic_piano_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+            )
+
+    assert response.status_code == 422
+    assert "transcribe failed" not in caplog.text
+
+
 def test_cors_allows_frontend_dev_origin():
     # The frontend dev server runs on http://localhost:5173 and calls this
     # API cross-origin; the browser only exposes the response if the server
