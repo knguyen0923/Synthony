@@ -45,8 +45,18 @@ def transcribe_audio_to_notes(audio_path: str, minimum_note_length: Optional[flo
     ]
 
 
+def piano_checkpoint_downloaded() -> bool:
+    """True if the piano transcription model's checkpoint has already
+    been downloaded (and isn't a truncated/corrupt partial download) --
+    used by /health to report this without triggering the download."""
+    return (
+        _PIANO_CHECKPOINT_PATH.exists()
+        and _PIANO_CHECKPOINT_PATH.stat().st_size >= _MIN_CHECKPOINT_SIZE_BYTES
+    )
+
+
 def _ensure_piano_checkpoint() -> Path:
-    if not _PIANO_CHECKPOINT_PATH.exists() or _PIANO_CHECKPOINT_PATH.stat().st_size < _MIN_CHECKPOINT_SIZE_BYTES:
+    if not piano_checkpoint_downloaded():
         _PIANO_CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
         urllib.request.urlretrieve(_PIANO_CHECKPOINT_URL, _PIANO_CHECKPOINT_PATH)
     return _PIANO_CHECKPOINT_PATH

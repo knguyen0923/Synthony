@@ -16,7 +16,7 @@ from app.concurrency import NoJobSlotAvailable, job_slot
 from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
 from app.tempo.detect import detect_beat_map
-from app.transcription.audio_to_midi import transcribe_piano_audio_to_notes
+from app.transcription.audio_to_midi import piano_checkpoint_downloaded, transcribe_piano_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
 from app.export import export_musicxml
@@ -44,6 +44,12 @@ STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
+if shutil.which("ffmpeg") is None:
+    logger.warning(
+        "ffmpeg not found on PATH -- YouTube/Spotify-link ingestion will fail "
+        "(file upload is unaffected)"
+    )
 
 app = FastAPI()
 app.add_middleware(
@@ -128,8 +134,12 @@ async def _ingest_and_validate_duration(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "ffmpeg_available": shutil.which("ffmpeg") is not None,
+        "piano_model_downloaded": piano_checkpoint_downloaded(),
+    }
 
 
 @app.get("/songs", response_model=list[SongSummary])

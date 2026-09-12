@@ -123,3 +123,36 @@ def test_transcribe_piano_handles_no_pedal_events(monkeypatch):
 
     assert result.notes == []
     assert result.pedal_events == []
+
+
+def test_piano_checkpoint_downloaded_true_when_file_exists_and_is_large_enough(tmp_path, monkeypatch):
+    import app.transcription.audio_to_midi as audio_to_midi_module
+
+    # Patch the size threshold down too -- writing a real
+    # _MIN_CHECKPOINT_SIZE_BYTES-sized (160MB) file just to satisfy this
+    # check would make the test slow and disk-heavy for no reason.
+    fake_checkpoint = tmp_path / "checkpoint.pth"
+    fake_checkpoint.write_bytes(b"x" * 100)
+    monkeypatch.setattr(audio_to_midi_module, "_PIANO_CHECKPOINT_PATH", fake_checkpoint)
+    monkeypatch.setattr(audio_to_midi_module, "_MIN_CHECKPOINT_SIZE_BYTES", 100)
+
+    assert audio_to_midi_module.piano_checkpoint_downloaded() is True
+
+
+def test_piano_checkpoint_downloaded_false_when_file_is_missing(tmp_path, monkeypatch):
+    import app.transcription.audio_to_midi as audio_to_midi_module
+
+    monkeypatch.setattr(audio_to_midi_module, "_PIANO_CHECKPOINT_PATH", tmp_path / "does-not-exist.pth")
+
+    assert audio_to_midi_module.piano_checkpoint_downloaded() is False
+
+
+def test_piano_checkpoint_downloaded_false_when_file_is_truncated(tmp_path, monkeypatch):
+    import app.transcription.audio_to_midi as audio_to_midi_module
+
+    truncated = tmp_path / "checkpoint.pth"
+    truncated.write_bytes(b"x" * 10)  # far below the (patched) threshold
+    monkeypatch.setattr(audio_to_midi_module, "_PIANO_CHECKPOINT_PATH", truncated)
+    monkeypatch.setattr(audio_to_midi_module, "_MIN_CHECKPOINT_SIZE_BYTES", 100)
+
+    assert audio_to_midi_module.piano_checkpoint_downloaded() is False

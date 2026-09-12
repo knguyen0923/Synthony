@@ -7,7 +7,55 @@ client = TestClient(app)
 def test_health_check_returns_ok():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
+
+
+def test_health_check_reports_ffmpeg_and_piano_model_status_when_both_present(monkeypatch):
+    import shutil as shutil_module
+    import app.main as main_module
+
+    monkeypatch.setattr(shutil_module, "which", lambda name: "/usr/bin/ffmpeg")
+    monkeypatch.setattr(main_module, "piano_checkpoint_downloaded", lambda: True)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "ffmpeg_available": True,
+        "piano_model_downloaded": True,
+    }
+
+
+def test_health_check_reports_missing_ffmpeg_and_undownloaded_model(monkeypatch):
+    import shutil as shutil_module
+    import app.main as main_module
+
+    monkeypatch.setattr(shutil_module, "which", lambda name: None)
+    monkeypatch.setattr(main_module, "piano_checkpoint_downloaded", lambda: False)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "ffmpeg_available": False,
+        "piano_model_downloaded": False,
+    }
+
+
+def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch, caplog):
+    import importlib
+    import logging
+    import shutil as shutil_module
+    import app.main as main_module
+
+    monkeypatch.setattr(shutil_module, "which", lambda name: None)
+
+    with caplog.at_level(logging.WARNING, logger="app.main"):
+        importlib.reload(main_module)
+
+    assert any("ffmpeg" in record.message.lower() for record in caplog.records)
 
 
 from pathlib import Path
