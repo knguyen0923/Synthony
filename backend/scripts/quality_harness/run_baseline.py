@@ -128,7 +128,10 @@ SOURCES = [
             "track whose real-audio verification during Track 3 Phase 1 "
             "found assign_hands's badly unbalanced hand split (RH 1169/LH 29 "
             "notes, 83% of RH bass-register) that this plan fixes -- kept in "
-            "the fixed corpus going forward as this fix's regression check."
+            "the fixed corpus going forward as this fix's regression check. "
+            "Ultimately fixed not by changing assign_hands but by bypassing "
+            "it for this path entirely, transcribing the bass/other stems "
+            "separately instead of mixing them and hand-splitting the result."
         ),
     ),
 ]

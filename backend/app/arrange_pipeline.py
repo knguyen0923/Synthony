@@ -188,7 +188,7 @@ def run_arrange_pipeline(
             set_status(job_id, "arranging")
             if _is_instrumental(melody_notes):
                 logger.info(
-                    "job %s: no real vocal melody detected (%d notes, %.2f notes/s), using DP hand-split",
+                    "job %s: no real vocal melody detected (%d notes, %.2f notes/s), splitting hands by stem (bass -> LH, other -> RH)",
                     job_id, len(melody_notes), _melody_note_density(melody_notes),
                 )
                 rh_variants, lh_variants = _instrumental_variants(str(stems.bass), str(stems.other), seconds_per_quarter, beat_map)

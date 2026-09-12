@@ -29,13 +29,23 @@ that a melody may legitimately dip into the bass register (or an
 accompaniment rise into the treble) without being reassigned to the other
 hand; a hand's own notes are simply redrawn with a temporary clef.
 
-A lone note at an onset (no simultaneous partner) is *always* assigned to
-the right hand, mirroring the current codebase's existing melody rule
-exactly (the highest -- and only -- note in a group of one is always
-"the melody"). This is a deliberate special case, not a DP decision: it
-keeps a sustained low monophonic run in RH (where the temporary-clef
-mechanism draws it in bass clef) rather than letting continuity pull it
-into LH, which would silently change today's intentional behavior.
+A lone note at an onset (no simultaneous partner) is forced to the right
+hand only during "cold start" -- while either hand has never yet had a
+note assigned to it. This mirrors the codebase's original melody rule
+(the highest -- and only -- note in a group of one is always "the
+melody") for the case that rule was actually built for: a monophonic
+opening or sustained low run before both hands have any pitch history to
+judge continuity against, where a never-used hand's zero-cost first note
+would otherwise make an arbitrary register jump look deceptively cheap.
+Once *both* hands have an established pitch centroid, a lone note is no
+longer forced -- it is scored like any other DP decision, weighed by the
+normal continuity/span/crossing/switching costs, and can legitimately
+land in LH when that is genuinely the better continuation (see
+`test_lone_low_notes_route_to_lh_once_both_hands_are_established`).
+`LONE_NOTE_RH_BIAS` still applies in that established-hands case, but
+only as a small tie-break nudge back toward RH when the DP's decision is
+otherwise close -- it does not reinstate the unconditional cold-start
+rule.
 """
 
 import itertools
@@ -115,8 +125,11 @@ RH_MELODY_TIEBREAK_WEIGHT = 0.01
 # continuity/switch signal is otherwise near-ambiguous, matching this
 # module's existing RH-leaning convention for genuine ties. Verified
 # empirically to never override a real continuity/switch signal in either
-# direction -- CONTINUITY_WEIGHT and SWITCH_PENALTY are both >= 4.0x this
-# value, so any real pitch/continuity difference still decides the split.
+# direction -- it can only flip a lone note's hand assignment when the two
+# candidate hands' continuity and switch costs are already within 0.5 of
+# each other, i.e. a sub-semitone difference in centroid distance with
+# equal switch cost, so any real pitch/continuity difference still decides
+# the split.
 LONE_NOTE_RH_BIAS = 0.5
 
 

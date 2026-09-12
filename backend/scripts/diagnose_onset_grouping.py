@@ -12,6 +12,13 @@ separation -> bass+other mix -> transcription), then measures onset-group
 sizes and near-miss merges on that note list. Does not call assign_hands
 itself -- this only inspects _group_by_onset's output.
 
+NOTE: this reproduces the PRE-PIVOT instrumental path, as it existed when
+this diagnostic was run. _instrumental_variants was later changed (Task 5
+of the same fix) to transcribe the bass/other stems separately instead of
+mixing them and calling assign_hands, so this script no longer describes
+the current instrumental path -- it is kept as a record of the
+diagnostic that motivated that pivot.
+
 USAGE
   cd backend
   ./.venv/bin/python scripts/diagnose_onset_grouping.py \
