@@ -76,9 +76,10 @@ explicit decision since it's a shared CI-pipeline file.
   concurrent-request handling someday.
 - A handful of Minor findings from the hardening pass's final review, and
   from this session's instrumental-arrangement reviews, were deliberately
-  left as-is (all confirmed low-risk/cosmetic, not bugs) — see the SDD
-  ledger at `.superpowers/sdd/2026-09-12-instrumental-arrangement/` while
-  it still exists, or the spec/plan docs' own notes once it's cleaned up.
+  left as-is (all confirmed low-risk/cosmetic, not bugs) — the plan's SDD
+  ledger has already been deleted (per `superpowers:subagent-driven-development`'s
+  own cleanup step, since its final review came back clean); the design
+  spec's post-implementation notes are the durable record now.
 - Two long-standing, deliberately-parked items: distinguishing multiple
   simultaneous instruments within Demucs's catch-all "other" stem, and
   further LH onset-cleanup work (on hold unless listening surfaces it as
