@@ -212,3 +212,90 @@ def test_is_instrumental_false_at_and_above_the_threshold():
 
     notes_above_threshold = notes_at_threshold + [NoteEvent(start=100.0, end=100.5, pitch=60)]
     assert _is_instrumental(notes_above_threshold) is False
+
+
+def test_instrumental_variants_splits_notes_into_both_hands_via_dp(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    # A held low note plus a held high note at the same onset -- assign_hands'
+    # DP splits a lone onset by pitch when there's no established continuity
+    # yet, so this should land as one RH note and one LH note.
+    fake_notes = [
+        NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.8),  # high
+        NoteEvent(start=0.0, end=2.0, pitch=48, velocity=0.8),  # low
+    ]
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+
+    assert set(rh_variants.keys()) == {"easy", "medium", "hard"}
+    assert set(lh_variants.keys()) == {"easy", "medium", "hard"}
+    rh_pitches = [n.pitch.midi for n in rh_variants["hard"].flatten().notes]
+    lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
+    assert rh_pitches == [72]
+    assert lh_pitches == [48]
+
+
+def test_instrumental_variants_caps_simultaneous_voices_per_hand(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    # Five simultaneous high notes: assign_hands' hard span cutoff (2
+    # octaves) and RH's melody tie-break will put some/all in RH; whichever
+    # hand ends up with more than MAX_SIMULTANEOUS_VOICES_PER_HAND (4) must
+    # get capped by cap_simultaneous_notes.
+    fake_notes = [
+        NoteEvent(start=0.0, end=2.0, pitch=pitch, velocity=velocity)
+        for pitch, velocity in [(60, 0.9), (62, 0.8), (64, 0.7), (65, 0.6), (67, 0.1)]
+    ]
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+
+    hard_notes = list(rh_variants["hard"].flatten().notes)
+    assert len(hard_notes) <= 4
+
+
+def test_instrumental_variants_lh_stays_in_the_hard_lh_range(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+    from app.lh.extract import HARD_LH_RANGE
+
+    fake_notes = [
+        NoteEvent(start=0.0, end=1.0, pitch=90, velocity=0.9),  # high -- RH by span/tiebreak
+        NoteEvent(start=0.0, end=1.0, pitch=84, velocity=0.5),  # also high, but should land LH and get shifted down
+    ]
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+
+    _rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+
+    lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
+    assert all(HARD_LH_RANGE[0] <= p <= HARD_LH_RANGE[1] for p in lh_pitches)
+
+
+def test_instrumental_variants_passes_minimum_note_length_to_transcription(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+    from app.lh.extract import LH_MINIMUM_NOTE_LENGTH_MS
+
+    captured = {}
+
+    def fake_transcribe(audio_path, minimum_note_length=None):
+        captured["minimum_note_length"] = minimum_note_length
+        return [NoteEvent(start=0.0, end=1.0, pitch=60, velocity=0.5)]
+
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", fake_transcribe)
+
+    pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+
+    assert captured["minimum_note_length"] == LH_MINIMUM_NOTE_LENGTH_MS
+
+
+def test_instrumental_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_given(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    fake_notes = [NoteEvent(start=1.0, end=2.0, pitch=72, velocity=0.9)]
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+
+    beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM, unlike the 120 BPM default
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5, beat_map=beat_map)
+
+    rh_note = list(rh_variants["hard"].flatten().notes)[0]
+    assert rh_note.offset == 1.0  # 1.0 QL, not the 2.0 QL a fixed 0.5s/quarter default would give

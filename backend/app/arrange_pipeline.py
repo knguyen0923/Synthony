@@ -14,12 +14,21 @@ from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
-from app.lh.extract import build_lh_part, extract_lh_notes
+from app.lh.extract import HARD_LH_RANGE, LH_MINIMUM_NOTE_LENGTH_MS, build_lh_part, extract_lh_notes
 from app.melody.extract import build_melody_part, extract_melody_notes
-from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score, key_signature_from_tonic
+from app.notation.hand_assignment import assign_hands
+from app.notation.hand_split import (
+    MAX_SIMULTANEOUS_VOICES_PER_HAND,
+    SECONDS_PER_QUARTER,
+    build_grand_staff_score,
+    key_signature_from_tonic,
+    notes_to_part,
+)
+from app.notation.voice_cap import cap_simultaneous_notes
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 from app.tempo.detect import BeatMap, detect_beat_map
+from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +77,39 @@ def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUA
         "medium": shift_into_range(quantize_part(base, MEDIUM_GRID, max_voices=MAX_VOICING_TONES), *MEDIUM_LH_RANGE),
         "hard": base,
     }
+
+
+def _instrumental_variants(
+    harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+):
+    """RH/LH variants for a song with no real vocal melody (see
+    _is_instrumental): transcribe the harmony mix directly and split it
+    into hands via Spec 1's continuity-aware DP (assign_hands) instead of
+    Spec 2's usual vocals-are-RH/bass+other-are-LH fixed roles. Mirrors
+    _rh_variants/_lh_variants' shape exactly so downstream tier derivation
+    and build_grand_staff_score's per-tier loop are unaffected."""
+    notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    rh_notes, lh_notes = assign_hands(notes)
+    rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+    lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+
+    rh_base = notes_to_part(rh_notes, part_id="RH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map)
+    lh_base = shift_into_range(
+        notes_to_part(lh_notes, part_id="LH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map),
+        *HARD_LH_RANGE,
+    )
+
+    rh_variants = {
+        "easy": shift_into_range(quantize_part(rh_base, EASY_GRID), *EASY_RH_RANGE),
+        "medium": shift_into_range(quantize_part(rh_base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
+        "hard": rh_base,
+    }
+    lh_variants = {
+        "easy": shift_into_range(quantize_part(lh_base, EASY_GRID, max_voices=1), *EASY_LH_RANGE),
+        "medium": shift_into_range(quantize_part(lh_base, MEDIUM_GRID, max_voices=MAX_VOICING_TONES), *MEDIUM_LH_RANGE),
+        "hard": lh_base,
+    }
+    return rh_variants, lh_variants
 
 
 def mix_wav_files(path_a: Path, path_b: Path, dest: Path) -> Path:
