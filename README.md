@@ -195,7 +195,7 @@ OpenSheetMusicDisplay rendering and `QrScanButton`'s camera access aren't
 covered by automated tests — both stay manually verified in a browser.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the backend suite and a
-frontend build/lint check on every push to `main` and on pull requests.
+frontend lint/test/build check on every push to `main` and on pull requests.
 
 ### Docker
 
@@ -215,6 +215,20 @@ toolchain (via rustup), `cmake`, `libopus-dev`, and `maturin` before the
 `requirements.txt` install so pip can build it from source instead.
 
 ## API
+
+`GET /health` — liveness/readiness check:
+
+```json
+{
+  "status": "ok",
+  "ffmpeg_available": true,
+  "piano_model_downloaded": false
+}
+```
+
+`ffmpeg_available` reflects whether `ffmpeg` is on `PATH` (see the Backend
+section above); `piano_model_downloaded` is `false` until `/transcribe`'s
+first request has downloaded the piano transcription checkpoint.
 
 `POST /transcribe` — one of `audio_file` (multipart upload), `youtube_url`,
 or `spotify_url` (form fields). Returns:
