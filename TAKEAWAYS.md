@@ -3,9 +3,10 @@
 A retrospective on building Synthony: an app that turns audio — a file
 upload, a YouTube link, a Spotify link, or a QR-scanned link — into
 practice-ready piano sheet music at three difficulty tiers. Built solo,
-2026-08-31 to 2026-09-11 (105 commits, 5 active build days), from empty
-repo to two working end-to-end transcription pipelines with a real-audio
-verification harness behind them.
+2026-08-31 to 2026-09-11 (119 commits, 5 active build days), from empty
+repo to two working end-to-end transcription pipelines, a real-audio
+verification harness, and — as of the same final day — CI, structured
+logging, a concurrency guardrail, and a Docker local-run story on top.
 
 ## What it does
 
@@ -39,8 +40,10 @@ builder and the same pure difficulty engine, so nothing downstream of
 | Difficulty engine | Pure Python `Score → Score` transforms (quantize density, narrow register) | Deterministic and independently unit-testable, no ML anywhere in this step — the one place in the pipeline where "exactly right" matters more than "probably right" |
 | Backend | FastAPI, Python 3.11 | Sync `/transcribe`, async `/arrange` via `BackgroundTasks` — no Celery/Redis needed at personal-project scale |
 | Frontend | React 18 + Vite + TypeScript, OpenSheetMusicDisplay | Renders MusicXML straight in the browser, one tab per difficulty tier |
-| Testing | pytest, TDD throughout | 227 tests, plus a separate real-audio verification harness (below) that unit tests alone can't replace |
-| Hosting | None yet — personal/local only | A deliberate scope cut, not an oversight; see "What's next" |
+| Testing | pytest, TDD throughout | 239 tests, plus a separate real-audio verification harness (below) that unit tests alone can't replace |
+| CI | GitHub Actions | Backend suite + frontend build/lint on every push to `main` and every PR |
+| Concurrency | A `threading.BoundedSemaphore`-based job-slot limiter | Caps simultaneous heavy ML jobs (`MAX_CONCURRENT_JOBS`, default 2) — no Celery/Redis needed at this scale |
+| Hosting | None live — Docker Compose for local runs only | A deliberate scope cut, not an oversight; see "What's next" |
 
 ## Architecture
 
@@ -168,11 +171,50 @@ subtask*, not better in general.
   write only to non-production. That boundary is what made fast local
   iteration possible without a second thought about blast radius.
 
+### Production hardening surfaced its own class of lessons
+
+Once the pipelines were solid, a separate pass added CI, structured
+logging, a concurrency guardrail, and Docker support — deliberately scoped
+to what a personal/demo project needs, not public-service infrastructure
+(no auth, no rate limiting beyond the concurrency cap, no distributed job
+queue). Running this as a plan with independent task-level review, plus
+one broad whole-branch review at the end, caught things a single pass
+wouldn't have:
+
+- **A review that reproduces a claim beats a review that reads it.** A
+  fix for "Docker doesn't pick up Spotify credentials from `backend/.env`"
+  added an `env_file` directive that looked correct on paper. The
+  re-review didn't just read the diff — it ran `docker compose config`
+  against a real test `.env` and found the fix was completely inert: a
+  pre-existing `environment:` block in the same file silently overrides
+  `env_file` for identical keys in Docker Compose's precedence rules. The
+  bug wasn't in unfamiliar code; it was in a two-line YAML file, and it
+  still needed empirical reproduction to catch.
+- **Real infrastructure findings don't always get a same-session fix, and
+  that's fine if it's said out loud.** Two genuine, evidence-backed gaps
+  ended this pass documented-but-unfixed rather than patched: the backend
+  Docker image doesn't build natively on Apple Silicon at all (a `demucs`
+  transitive dependency, `sphn`, ships no `linux/aarch64` wheel — confirmed
+  by testing both an arm64 build and an emulated amd64 build side by side),
+  and the docker-compose fix above. Attempting a real fix for the former
+  (a Rust toolchain so `sphn` builds from source) would have needed a slow,
+  uncertain verification cycle for the least-critical task in the plan;
+  the honest move was a clear comment explaining the gap and a workaround,
+  not a confident-looking but unverified patch.
+- **A plan can specify a broken test, and a good implementer will catch
+  it, not just follow it.** One task's own written instructions told an
+  implementer to monkeypatch a semaphore reference on the wrong module.
+  Patching it there would have made the test pass without actually testing
+  anything (the object being patched was never read at runtime). Catching
+  this required the implementer to trace *where* a value is actually
+  looked up at call time, not just where a plan says to patch it — the
+  written plan is an argument, not a substitute for reading the code.
+
 ## By the numbers
 
-- **105 commits**, empty repo to two complete pipelines, across 5 active
-  build days spanning 2026-08-31 to 2026-09-11
-- **227 automated tests**, 3,096 lines of test code vs. 2,160 lines of
+- **119 commits**, empty repo to two complete pipelines plus a hardening
+  pass, across 5 active build days spanning 2026-08-31 to 2026-09-11
+- **239 automated tests**, 3,416 lines of test code vs. 2,258 lines of
   backend source (more test code than implementation — a deliberate TDD
   habit, not an accident)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
@@ -183,17 +225,36 @@ subtask*, not better in general.
   change, not just the unit test suite
 - **$0 hosting** — not because it's free-tier deployed, but because it
   isn't deployed anywhere yet; a personal/local project by explicit
-  choice, not by omission
+  choice, not by omission. A `docker compose up` local-run story exists,
+  though the backend image currently only builds natively on
+  linux/amd64 (see below)
 
 ## What's next
 
-- **Production hardening**, scoped to what a personal/demo project
-  actually needs rather than public-service infrastructure: CI running
-  the existing test suite on push, a Dockerfile/local-run story, basic
-  structured logging (today it's bare `try`/`except`), and a concurrency
-  guardrail so heavy ML jobs can't accidentally exhaust one machine. No
-  auth, no rate limiting, no distributed job queue — those only start
-  mattering if this ever stops being personal-use.
+- **Push the branch and watch CI actually run.** The workflow's config
+  was written and locally sanity-checked, but per this project's own
+  "read from anywhere, write only to non-production, and never push
+  without asking" rule, actually pushing to watch the first real run
+  happen was left for a deliberate decision, not done automatically.
+- **A known, real docker-compose bug**: `backend/.env` (Spotify
+  credentials, `MAX_CONCURRENT_JOBS`, `LOG_LEVEL`) doesn't actually reach
+  the container today — an `environment:` block in `docker-compose.yml`
+  silently overrides the `env_file` directive meant to read it, for every
+  key both specify. The fix is small (stop duplicating those keys in
+  `environment:`) but wasn't made in the same pass that found it, per this
+  project's own process for final-review findings (one fix wave, not an
+  open-ended loop). Doesn't affect file-upload or YouTube-link input.
+- **Native arm64 Docker builds** — the backend image doesn't build
+  natively on Apple Silicon (a `demucs` transitive dependency, `sphn`,
+  ships no `linux/aarch64` wheel); documented with a `--platform
+  linux/amd64` emulation workaround rather than fixed, since a real fix
+  (a Rust/maturin toolchain) needs a slow, uncertain build cycle to verify.
+- **`/transcribe` still blocks the event loop** while it runs its full ML
+  pipeline synchronously — pre-existing, not introduced by the hardening
+  pass, and left alone deliberately at personal-project scale. Worth
+  revisiting only if `/transcribe` ever needs to handle truly concurrent
+  requests (today, two `/transcribe` calls can never contend for the new
+  concurrency guardrail's job slots — they can't even both start).
 - **Broadening past pop/rock** — instrumentals, rap, orchestral, and
   multi-melody songs are explicitly out of scope for the current
   arrangement engine, deferred on purpose until the pop/rock case was

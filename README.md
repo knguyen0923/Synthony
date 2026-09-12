@@ -1,5 +1,7 @@
 # Synthony
 
+[![CI](https://github.com/knguyen0923/Synthony/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/knguyen0923/Synthony/actions/workflows/ci.yml)
+
 Synthony turns audio into practice-ready piano sheet music at three
 difficulty tiers — Easy, Medium, and Hard. Give it a file upload, a
 YouTube link, a Spotify link, or a scanned QR code pointing at one of those
@@ -154,6 +156,9 @@ pytest
 All external network calls (yt-dlp, Spotify API) are mocked in the test
 suite. There is no automated frontend test suite for v1 — frontend
 correctness is verified manually in a browser.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the backend suite and a
+frontend build/lint check on every push to `main` and on pull requests.
 
 ### Docker
 
