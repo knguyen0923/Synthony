@@ -151,3 +151,51 @@ def test_run_arrange_pipeline_waits_for_a_job_slot(tmp_path, monkeypatch):
     pipeline_thread.join(timeout=5.0)
 
     assert get_job(job_id).status == "done"
+
+
+def test_run_arrange_pipeline_fails_cleanly_when_slot_wait_times_out(tmp_path, monkeypatch):
+    # If every slot stays busy long enough, a queued job must give up and
+    # fail cleanly (set_failed) rather than block the calling thread
+    # forever -- run_arrange_pipeline runs on Starlette's shared anyio
+    # threadpool, so an unbounded wait here would eventually pin every
+    # thread in that pool and starve the whole app.
+    import app.arrange_pipeline as pipeline_module
+    import app.concurrency as concurrency_module
+
+    monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
+    # JOB_QUEUE_TIMEOUT_SECONDS is read directly inside arrange_pipeline.py
+    # (unlike _slots, which lives behind job_slot()'s own closure over
+    # app.concurrency's globals), so patching it on pipeline_module does
+    # take effect here.
+    monkeypatch.setattr(pipeline_module, "JOB_QUEUE_TIMEOUT_SECONDS", 0.1)
+
+    job_id = create_job()
+
+    from app.concurrency import job_slot as real_job_slot
+
+    holding = threading.Event()
+    release_holder = threading.Event()
+
+    def hold_slot():
+        with real_job_slot():
+            holding.set()
+            release_holder.wait(timeout=2.0)
+
+    holder_thread = threading.Thread(target=hold_slot)
+    holder_thread.start()
+    holding.wait(timeout=1.0)
+
+    # Run synchronously -- the timeout (0.1s) means this returns quickly
+    # once the slot wait gives up, rather than hanging.
+    run_arrange_pipeline(
+        job_id=job_id, audio_path="fake.wav", title="Song",
+        source_type="upload", source_url=None, song_id="fake-song-id",
+        dest_dir=tmp_path,
+    )
+
+    release_holder.set()
+    holder_thread.join()
+
+    job = get_job(job_id)
+    assert job.status == "failed"
+    assert "busy" in job.detail

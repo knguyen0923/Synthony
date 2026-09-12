@@ -7,7 +7,7 @@ import numpy as np
 from scipy.io import wavfile
 
 from app.chords.detect import detect_key_and_tempo
-from app.concurrency import job_slot
+from app.concurrency import JOB_QUEUE_TIMEOUT_SECONDS, job_slot
 from app.difficulty.easy import EASY_GRID, EASY_LH_RANGE, EASY_RH_RANGE
 from app.difficulty.medium import MAX_VOICING_TONES, MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
 from app.difficulty.quantize import quantize_part
@@ -84,7 +84,7 @@ def run_arrange_pipeline(
 ) -> None:
     try:
         logger.info("job %s: waiting for a free job slot", job_id)
-        with job_slot(blocking=True):
+        with job_slot(blocking=True, timeout=JOB_QUEUE_TIMEOUT_SECONDS):
             set_status(job_id, "separating")
             stems = separate_stems(audio_path, dest_dir / "stems")
 

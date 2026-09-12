@@ -5,6 +5,15 @@ from typing import Optional
 
 MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", "2"))
 
+# How long a queued job will wait for a free slot before giving up and
+# failing cleanly. run_arrange_pipeline() runs on Starlette's shared anyio
+# threadpool (also used to serve the /storage/*.musicxml static mount), so
+# an unbounded wait here would let enough queued jobs pin every thread in
+# that pool and starve the whole app, not just the job queue. 30 minutes is
+# generous enough that it only trips under genuine sustained overload, not
+# normal queueing.
+JOB_QUEUE_TIMEOUT_SECONDS = float(os.environ.get("JOB_QUEUE_TIMEOUT_SECONDS", "1800"))
+
 _slots = threading.Semaphore(MAX_CONCURRENT_JOBS)
 
 
