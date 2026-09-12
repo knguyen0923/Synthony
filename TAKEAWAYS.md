@@ -3,7 +3,7 @@
 A retrospective on building Synthony: an app that turns audio — a file
 upload, a YouTube link, a Spotify link, or a QR-scanned link — into
 practice-ready piano sheet music at three difficulty tiers. Built solo,
-2026-08-31 to 2026-09-12 (150 commits, 6 active build days), from empty
+2026-08-31 to 2026-09-12 (160 commits, 6 active build days), from empty
 repo to two working end-to-end transcription pipelines, a real-audio
 verification harness, CI, structured logging, a concurrency guardrail, a
 Docker local-run story, and a discovery-sweep bug-fix pass on top.
@@ -248,10 +248,10 @@ wouldn't have:
 
 ## By the numbers
 
-- **150 commits**, empty repo to two complete pipelines plus a hardening
+- **160 commits**, empty repo to two complete pipelines plus a hardening
   pass and a discovery-sweep bug-fix pass, across 6 active build days
   spanning 2026-08-31 to 2026-09-12
-- **256 automated backend tests** (plus a separate frontend Vitest suite),
+- **267 automated backend tests** (plus a separate frontend Vitest suite),
   3,801 lines of backend test code vs. 2,417 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
   accident)
@@ -281,10 +281,17 @@ sure how they felt about arrange-instrumental quality overall, and the
 decision was to stop investing further in it for now rather than keep
 tuning an open question. A discovery-sweep bug-fix pass (ingestion error
 handling, one observability gap, six frontend lifecycle bugs) shipped
-instead — see the lessons above. Current focus: a "production readiness"
-pass, not yet scoped (what that means for a personal/self-hosted project
-— deployment target, uptime expectations, etc. — needs a proper
-brainstorm before it's a plan).
+instead — see the lessons above. The "production readiness" pass that
+followed is now done: it shipped stem-directory cleanup (both going
+forward, via the arrange pipeline deleting `stems/` right after a
+successful run, and a one-time sweep of the ~55 pre-existing song
+directories that predated that fix), a `/health` endpoint reporting
+ffmpeg/piano-model status plus a startup warning if either's missing,
+rotating file logging alongside stdout, and a `backend/setup.sh` script
+to mechanize the venv setup dance. A closing whole-branch audit sweep on
+top of that caught a handful of doc-staleness and robustness findings
+(this file's own stale counts among them) — fixed in one final wave
+rather than left for a second round.
 
 - **`/transcribe` still blocks the event loop** while it runs its full ML
   pipeline synchronously — pre-existing, not introduced by the hardening

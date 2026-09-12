@@ -219,4 +219,4 @@ def run_arrange_pipeline(
     except Exception as exc:
         logger.exception("arrange pipeline failed for job_id=%s song_id=%s", job_id, song_id)
         shutil.rmtree(dest_dir, ignore_errors=True)
-        set_failed(job_id, str(exc))
+        set_failed(job_id, "Arrangement failed -- check the server logs for details")

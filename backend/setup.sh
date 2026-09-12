@@ -21,4 +21,4 @@ pip install --no-build-isolation -r requirements.txt
 
 echo ""
 echo "Backend environment ready. Activate it with:"
-echo "    source .venv/bin/activate"
+echo "    source $(pwd)/.venv/bin/activate"

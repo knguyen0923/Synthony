@@ -60,3 +60,30 @@ def test_configure_logging_file_handler_has_rotation_configured(tmp_path, monkey
     assert len(file_handlers) == 1
     assert file_handlers[0].maxBytes == 5 * 1024 * 1024
     assert file_handlers[0].backupCount == 3
+
+
+def test_configure_logging_falls_back_to_stdout_only_when_file_handler_setup_fails(tmp_path, monkeypatch):
+    import logging.handlers
+    import app.logging_config as logging_config_module
+
+    monkeypatch.setattr(logging_config_module, "LOG_DIR", tmp_path / "logs")
+
+    # Capture the real class before patching it out -- once RotatingFileHandler
+    # is replaced with a plain function below, isinstance() can no longer use
+    # the (now-patched) attribute as its second argument.
+    real_rotating_file_handler = logging.handlers.RotatingFileHandler
+
+    def _raise_oserror(*args, **kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(logging.handlers, "RotatingFileHandler", _raise_oserror)
+
+    configure_logging()  # must not raise
+
+    file_handlers = [
+        h for h in logging.getLogger().handlers
+        if isinstance(h, real_rotating_file_handler)
+    ]
+    assert file_handlers == []
+    stream_handlers = [h for h in logging.getLogger().handlers if isinstance(h, logging.StreamHandler)]
+    assert len(stream_handlers) == 1

@@ -1,6 +1,7 @@
 import logging
 import logging.handlers
 import os
+import sys
 from pathlib import Path
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -21,15 +22,20 @@ def configure_logging() -> None:
     level = logging.getLevelNamesMapping().get(level_name, logging.INFO)
     log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.handlers.RotatingFileHandler(
-        LOG_DIR / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3
-    )
-    file_handler.setFormatter(logging.Formatter(log_format))
+    handlers = [logging.StreamHandler()]
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.RotatingFileHandler(
+            LOG_DIR / "app.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+        )
+        file_handler.setFormatter(logging.Formatter(log_format))
+        handlers.append(file_handler)
+    except OSError as exc:
+        print(f"WARNING: could not set up file logging at {LOG_DIR}: {exc} -- stdout-only", file=sys.stderr)
 
     logging.basicConfig(
         level=level,
         format=log_format,
-        handlers=[logging.StreamHandler(), file_handler],
+        handlers=handlers,
         force=True,
     )

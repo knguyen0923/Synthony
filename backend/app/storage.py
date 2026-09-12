@@ -65,6 +65,19 @@ def evict_oldest_songs(limit: Optional[int] = None) -> None:
         delete_song(d.name)
 
 
+def cleanup_stray_stems() -> None:
+    """One-time-per-startup sweep: remove any leftover stems/ directory
+    under existing songs -- songs arranged before stem cleanup was added
+    to run_arrange_pipeline (Task 1 of the production-readiness pass) may
+    still have theirs. Safe to call on every startup: a no-op once every
+    song's stems/ is already gone."""
+    if not STORAGE_ROOT.exists():
+        return
+    for song_path in STORAGE_ROOT.iterdir():
+        if song_path.is_dir():
+            shutil.rmtree(song_path / "stems", ignore_errors=True)
+
+
 def read_song(song_id: str) -> Optional[dict]:
     """Read a stored song's metadata by id, or None if it doesn't exist
     (e.g. it was never created, or was since deleted/evicted)."""

@@ -575,7 +575,7 @@ def test_arrange_job_failure_sets_failed_status_with_detail(monkeypatch, synthet
             break
         time.sleep(0.05)
 
-    assert result == {"status": "failed", "detail": "separation blew up"}
+    assert result == {"status": "failed", "detail": "Arrangement failed -- check the server logs for details"}
     assert not any(STORAGE_ROOT.iterdir())
 
 
@@ -600,7 +600,7 @@ def test_arrange_job_failure_logs_the_exception(monkeypatch, caplog, synthetic_p
                 break
             time.sleep(0.05)
 
-    assert result == {"status": "failed", "detail": "separation blew up"}
+    assert result == {"status": "failed", "detail": "Arrangement failed -- check the server logs for details"}
     assert "arrange pipeline failed" in caplog.text
 
 

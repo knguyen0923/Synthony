@@ -140,6 +140,10 @@ The API listens on `http://localhost:8000`. Rendered scores and source
 audio are written under `backend/storage/{song_id}/` (git-ignored, created
 at runtime).
 
+Logs are written to both stdout and a rotating file at `backend/logs/app.log`
+(git-ignored, 5MB × 3 backups) — useful for diagnosing a crash if the server
+was run backgrounded.
+
 Spotify-link input additionally requires a Spotify Developer Dashboard app:
 
 ```bash

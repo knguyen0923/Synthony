@@ -6,6 +6,7 @@ from app.storage import (
     song_dir,
     write_metadata,
     evict_oldest_songs,
+    cleanup_stray_stems,
     read_song,
     list_songs,
     delete_song,
@@ -163,3 +164,20 @@ def test_delete_song_removes_the_directory():
 
 def test_delete_song_does_not_raise_for_unknown_id():
     delete_song(new_song_id())
+
+
+def test_cleanup_stray_stems_removes_stems_dir_but_leaves_other_songs_and_files_untouched():
+    stemmy_id = _make_song("Has Stems", "2026-01-01T00:00:00+00:00")
+    stems_dir = STORAGE_ROOT / stemmy_id / "stems"
+    stems_dir.mkdir()
+    (stems_dir / "vocals.wav").write_text("dummy stem audio")
+    (STORAGE_ROOT / stemmy_id / "hard.musicxml").write_text("dummy musicxml")
+
+    clean_id = _make_song("No Stems", "2026-01-02T00:00:00+00:00")
+
+    cleanup_stray_stems()
+
+    assert not (STORAGE_ROOT / stemmy_id / "stems").exists()
+    assert (STORAGE_ROOT / stemmy_id / "metadata.json").exists()
+    assert (STORAGE_ROOT / stemmy_id / "hard.musicxml").exists()
+    assert (STORAGE_ROOT / clean_id).exists()

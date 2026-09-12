@@ -26,6 +26,7 @@ from app.storage import (
     song_dir,
     write_metadata,
     evict_oldest_songs,
+    cleanup_stray_stems,
     read_song,
     list_songs,
     delete_song,
@@ -41,6 +42,7 @@ SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
 
 STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+cleanup_stray_stems()
 
 configure_logging()
 logger = logging.getLogger(__name__)
