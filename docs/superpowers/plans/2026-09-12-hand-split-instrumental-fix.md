@@ -540,6 +540,312 @@ EOF
 
 ---
 
+### Task 5: Stem-split hand assignment for the instrumental branch (post-verification pivot)
+
+**Why this task exists:** Task 4's real-audio verification found the count-imbalance was fixed, but the user's own listening pass found the DP-based split "sounds incoherent/scattered." Direct investigation (see the design spec's "Post-implementation update" section) confirmed this is structural — `SWITCH_PENALTY` tuning trades flicker directly against balance, it cannot fix both — and that transcribing the already-separated `bass`/`other` Demucs stems independently (bass→LH, other→RH, no `assign_hands` call) produces a balanced, flicker-free split. A prototype was built and the user confirmed by listening: the stem-split version sounds better. This task implements that in the real pipeline.
+
+**Files:**
+- Modify: `backend/app/arrange_pipeline.py` — `_instrumental_variants` (currently lines 108-140), its call site in `run_arrange_pipeline` (currently line 189), and its imports (removes the now-unused `assign_hands` import).
+- Modify: `backend/tests/test_arrange_pipeline.py` — every `_instrumental_variants` test (lines 227-382) needs rewriting for the new two-argument signature and the removal of `assign_hands` from this code path.
+
+**Interfaces:**
+- Consumes: `transcribe_audio_to_notes(audio_path: str, minimum_note_length: Optional[float] = None) -> list[NoteEvent]` (unchanged, now called twice instead of once), `cap_simultaneous_notes`, `notes_to_part`, `shift_into_range`, `quantize_part` (all unchanged, already imported).
+- Produces: `_instrumental_variants(bass_path: str, other_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None) -> tuple[dict, dict]` — **signature change** from the current `_instrumental_variants(harmony_path: str, ...)`. The only caller (`run_arrange_pipeline`) is part of this task.
+
+- [ ] **Step 1: Write the failing tests**
+
+Replace the entire block of `_instrumental_variants` tests in `backend/tests/test_arrange_pipeline.py` (currently lines 227-382, from `def test_instrumental_variants_splits_notes_into_both_hands_via_dp` through the end of `def test_instrumental_variants_raises_when_no_harmonic_content_detected`) with:
+
+```python
+def _fake_transcribe_by_path(bass_notes, other_notes):
+    """Returns a fake transcribe_audio_to_notes that returns bass_notes for
+    a path containing 'bass' and other_notes for a path containing 'other'
+    -- matches how _instrumental_variants calls it once per stem path."""
+    def fake(audio_path, minimum_note_length=None):
+        if "bass" in audio_path:
+            return bass_notes
+        if "other" in audio_path:
+            return other_notes
+        raise AssertionError(f"unexpected audio_path: {audio_path}")
+    return fake
+
+
+def test_instrumental_variants_transcribes_bass_stem_to_lh_and_other_stem_to_rh(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    bass_notes = [NoteEvent(start=0.0, end=2.0, pitch=40, velocity=0.8)]
+    other_notes = [NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.8)]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(bass_notes, other_notes)
+    )
+
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    assert set(rh_variants.keys()) == {"easy", "medium", "hard"}
+    assert set(lh_variants.keys()) == {"easy", "medium", "hard"}
+    rh_pitches = [n.pitch.midi for n in rh_variants["hard"].flatten().notes]
+    lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
+    assert rh_pitches == [72]
+    assert lh_pitches == [40]
+
+
+def test_instrumental_variants_caps_simultaneous_voices_per_hand(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    # Five simultaneous notes from the "other" stem -- more than
+    # MAX_SIMULTANEOUS_VOICES_PER_HAND (4) -- must get capped.
+    other_notes = [
+        NoteEvent(start=0.0, end=2.0, pitch=pitch, velocity=velocity)
+        for pitch, velocity in [(60, 0.9), (62, 0.8), (64, 0.7), (65, 0.6), (67, 0.1)]
+    ]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], other_notes)
+    )
+
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    hard_notes = list(rh_variants["hard"].flatten().notes)
+    assert len(hard_notes) <= 4
+
+
+def test_instrumental_variants_lh_stays_in_the_hard_lh_range(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+    from app.lh.extract import HARD_LH_RANGE
+
+    bass_notes = [
+        NoteEvent(start=0.0, end=1.0, pitch=90, velocity=0.9),
+        NoteEvent(start=0.0, end=1.0, pitch=84, velocity=0.5),
+    ]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(bass_notes, [])
+    )
+
+    _rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
+    assert all(HARD_LH_RANGE[0] <= p <= HARD_LH_RANGE[1] for p in lh_pitches)
+
+
+def test_instrumental_variants_passes_minimum_note_length_to_both_transcriptions(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+    from app.lh.extract import LH_MINIMUM_NOTE_LENGTH_MS
+
+    captured = []
+
+    def fake_transcribe(audio_path, minimum_note_length=None):
+        captured.append((audio_path, minimum_note_length))
+        return [NoteEvent(start=0.0, end=1.0, pitch=60, velocity=0.5)]
+
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", fake_transcribe)
+
+    pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    assert len(captured) == 2
+    assert all(minimum_note_length == LH_MINIMUM_NOTE_LENGTH_MS for _path, minimum_note_length in captured)
+    assert {path for path, _ in captured} == {"fake/bass.wav", "fake/other.wav"}
+
+
+def test_instrumental_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_given(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    other_notes = [NoteEvent(start=1.0, end=2.0, pitch=72, velocity=0.9)]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], other_notes)
+    )
+
+    beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM, unlike the 120 BPM default
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants(
+        "fake/bass.wav", "fake/other.wav", 0.5, beat_map=beat_map
+    )
+
+    rh_note = list(rh_variants["hard"].flatten().notes)[0]
+    assert rh_note.offset == 1.0  # 1.0 QL, not the 2.0 QL a fixed 0.5s/quarter default would give
+
+
+def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_caps_as_the_normal_path(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    rh_chord = [
+        NoteEvent(start=0.0, end=2.0, pitch=60, velocity=0.5),
+        NoteEvent(start=0.0, end=2.0, pitch=64, velocity=0.7),
+        NoteEvent(start=0.0, end=2.0, pitch=67, velocity=0.6),
+        NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.95),
+    ]
+    lh_chord = [
+        NoteEvent(start=0.0, end=2.0, pitch=36, velocity=0.5),
+        NoteEvent(start=0.0, end=2.0, pitch=40, velocity=0.7),
+        NoteEvent(start=0.0, end=2.0, pitch=43, velocity=0.6),
+    ]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(lh_chord, rh_chord)
+    )
+
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    # RH Easy: exactly 1 voice (the highest-velocity note), within EASY_RH_RANGE.
+    rh_easy_notes = list(rh_variants["easy"].flatten().notes)
+    assert len(rh_easy_notes) == 1
+    assert all(
+        pipeline_module.EASY_RH_RANGE[0] <= n.pitch.midi <= pipeline_module.EASY_RH_RANGE[1]
+        for n in rh_easy_notes
+    )
+
+    # RH Medium: at most MAX_VOICING_TONES voices, more than 1, within MEDIUM_RH_RANGE.
+    rh_medium_notes = list(rh_variants["medium"].flatten().notes)
+    assert 1 < len(rh_medium_notes) <= pipeline_module.MAX_VOICING_TONES
+    assert all(
+        pipeline_module.MEDIUM_RH_RANGE[0] <= n.pitch.midi <= pipeline_module.MEDIUM_RH_RANGE[1]
+        for n in rh_medium_notes
+    )
+
+    # LH Easy/Medium: same grids/ranges/voice caps _lh_variants already uses.
+    lh_easy_notes = list(lh_variants["easy"].flatten().notes)
+    assert len(lh_easy_notes) == 1
+    assert all(
+        pipeline_module.EASY_LH_RANGE[0] <= n.pitch.midi <= pipeline_module.EASY_LH_RANGE[1]
+        for n in lh_easy_notes
+    )
+
+    lh_medium_notes = list(lh_variants["medium"].flatten().notes)
+    assert len(lh_medium_notes) <= pipeline_module.MAX_VOICING_TONES
+    assert all(
+        pipeline_module.MEDIUM_LH_RANGE[0] <= n.pitch.midi <= pipeline_module.MEDIUM_LH_RANGE[1]
+        for n in lh_medium_notes
+    )
+
+
+def test_instrumental_variants_raises_when_no_harmonic_content_detected(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], []))
+
+    with pytest.raises(ValueError, match="No harmonic content detected"):
+        pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+```
+
+- [ ] **Step 2: Run the tests, verify they fail**
+
+Run: `cd backend && ./.venv/bin/python -m pytest tests/test_arrange_pipeline.py -k instrumental_variants -v`
+Expected: FAIL — `_instrumental_variants` still has its old one-argument signature, so every rewritten test fails with a `TypeError` about the call signature (too many positional arguments) or a collection error, not a normal assertion failure. This is the expected failure mode given the signature hasn't changed yet.
+
+- [ ] **Step 3: Implement — rewrite `_instrumental_variants`**
+
+In `backend/app/arrange_pipeline.py`, replace the current `_instrumental_variants` function (currently lines 108-140):
+
+```python
+def _instrumental_variants(
+    harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+):
+    """RH/LH variants for a song with no real vocal melody (see
+    _is_instrumental): transcribe the harmony mix directly and split it
+    into hands via Spec 1's continuity-aware DP (assign_hands) instead of
+    Spec 2's usual vocals-are-RH/bass+other-are-LH fixed roles. Mirrors
+    _rh_variants/_lh_variants' shape exactly so downstream tier derivation
+    and build_grand_staff_score's per-tier loop are unaffected."""
+    notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    if not notes:
+        raise ValueError("No harmonic content detected")
+    rh_notes, lh_notes = assign_hands(notes)
+    rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+    lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+```
+
+with:
+
+```python
+def _instrumental_variants(
+    bass_path: str, other_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+):
+    """RH/LH variants for a song with no real vocal melody (see
+    _is_instrumental): transcribes the bass and "other" Demucs stems
+    SEPARATELY -- bass -> LH, "other" -> RH -- instead of mixing them into
+    one harmony signal and re-splitting by pitch continuity (assign_hands).
+    Real-audio verification found the mixed+DP-split approach produces a
+    reasonable RH/LH note-count balance but excessive hand-flicker (~44%
+    of adjacent notes swapping hands) on real multi-instrument input,
+    since continuity-based splitting assumes one performer's two hands,
+    not two different instruments interleaved in time. Each hand's part is
+    therefore one continuously-transcribed real source, avoiding flicker
+    structurally rather than by tuning. See the design spec's
+    "Post-implementation update" section for the real-audio evidence."""
+    rh_notes = transcribe_audio_to_notes(other_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    lh_notes = transcribe_audio_to_notes(bass_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    if not rh_notes and not lh_notes:
+        raise ValueError("No harmonic content detected")
+    rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+    lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+```
+
+The rest of the function (building `rh_base`/`lh_base`, `rh_variants`/`lh_variants`, and the `return` statement) is unchanged — leave it exactly as-is.
+
+- [ ] **Step 4: Implement — remove the now-unused `assign_hands` import**
+
+In `backend/app/arrange_pipeline.py`, remove this line (it becomes unused once Step 3 lands — `hand_split.py`'s own import of `assign_hands` is a separate module, untouched):
+
+```python
+from app.notation.hand_assignment import assign_hands
+```
+
+- [ ] **Step 5: Implement — update the call site**
+
+In `backend/app/arrange_pipeline.py`'s `run_arrange_pipeline`, change:
+
+```python
+                rh_variants, lh_variants = _instrumental_variants(str(harmony_path), seconds_per_quarter, beat_map)
+```
+
+to:
+
+```python
+                rh_variants, lh_variants = _instrumental_variants(str(stems.bass), str(stems.other), seconds_per_quarter, beat_map)
+```
+
+`harmony_path` itself is still computed and still used for `detect_key_and_tempo`/`detect_beat_map` in both branches (that code above this line is unchanged) — only this one call site's arguments change.
+
+- [ ] **Step 6: Run the tests, verify they pass**
+
+Run: `cd backend && ./.venv/bin/python -m pytest tests/test_arrange_pipeline.py -k instrumental_variants -v`
+Expected: PASS, all rewritten tests green.
+
+- [ ] **Step 7: Run the full backend suite**
+
+Run: `cd backend && ./.venv/bin/python -m pytest -v`
+Expected: PASS, zero failures, zero collection errors. (Note: `hand_assignment.py`'s own tests are unaffected by this task — `assign_hands` itself is untouched, only its caller in `arrange_pipeline.py` is removed.)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/app/arrange_pipeline.py backend/tests/test_arrange_pipeline.py
+git commit -m "$(cat <<'EOF'
+fix: split instrumental hand assignment by stem instead of DP continuity
+
+Real-audio verification (Task 4) found the DP-based lone-note fix resolved
+the RH/LH count imbalance but produced a ~44% adjacent-note hand-switch
+rate -- confirmed structural (SWITCH_PENALTY trades flicker directly
+against balance, sweeping it just recreates the original bug at high
+values). Transcribing the bass and "other" Demucs stems separately
+(bass -> LH, other -> RH) instead of mixing them and re-splitting by pitch
+continuity avoids the flicker structurally: each hand is one continuously
+-transcribed real source. User-confirmed by listening against a prototype.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+EOF
+)"
+```
+
+- [ ] **Step 9: Real-audio re-verification**
+
+Re-run the quality harness against the same two sources as Task 4:
+
+```bash
+cd backend/scripts/quality_harness
+../../.venv/bin/python run_baseline.py --label after-stem-split-fix --only transcribe_moonlight_sonata,arrange_instrumental_big_rock
+```
+
+Extract the `arrange_instrumental_big_rock` hard-tier metrics the same way Task 4 did, and confirm the RH/LH note counts are close to the prototype's already-user-verified split (RH from "other" ≈284 notes, LH from "bass" ≈381 notes, before `cap_simultaneous_notes`/tier-shaping — exact counts may differ slightly from re-running Basic Pitch, that's expected). The `transcribe_moonlight_sonata` source is unaffected by this task (solo piano still goes through Spec 1's `notes_to_grand_staff`/`assign_hands`, untouched) — re-running it here is a regression guard, not a re-verification.
+
+Export and hand the rock-instrumental Hard-tier MIDI to the user for a final confirmation listen (they already heard the equivalent prototype and preferred it, but the actual shipped code path should get its own listen before this is considered done, per this project's standing real-audio verification practice). Delete the exported MIDI files (both this task's and Task 4's remaining ones) from `~/Downloads/synthony-arrangements/` once the user confirms.
+
 ## Deferred (not in scope here)
 
 - `assign_hands`'s duration-overlap gap (onsets close in time but not exactly simultaneous still piling into one hand via sustained durations) — flagged in the original `25d513b` commit that introduced the DP, independent of the bug this plan fixes.

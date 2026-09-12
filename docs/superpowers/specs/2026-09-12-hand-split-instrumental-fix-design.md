@@ -169,6 +169,79 @@ preference):
 - `ONSET_ROUND_DECIMALS` — only touched if the diagnostic step finds
   mis-grouping material; otherwise left at its current value.
 
+## Post-implementation update: the DP fix wasn't enough (2026-09-12)
+
+Tasks 1-4 above shipped as designed and real-audio verification confirmed
+the count-imbalance was fixed (rock instrumental hard tier: RH/LH went from
+1169/29 to 670/540). But the user's own listening pass on that same output
+found it "sounds incoherent/scattered" despite the balanced counts. This is
+a real, additional finding beyond what this spec anticipated -- the fix
+correctly matched its own design goal, but the design goal (get the DP to
+route lone notes to LH when continuity favors it) turned out not to be
+sufficient for real musical quality on this kind of input.
+
+**Root cause of the flicker, confirmed by direct experiment:** reconstructed
+the actual note stream `assign_hands` receives for "Big Rock" (Kevin
+MacLeod's public-domain track behind `arrange_instrumental_big_rock.mp3`)
+from the exported hard-tier MusicXML, and measured a 43.7% adjacent-note
+hand-switch rate (time-ordered across both hands) -- far above what the
+existing `SWITCH_PENALTY` hysteresis was tuned to keep rare. Sweeping
+`SWITCH_PENALTY` against this same real note stream showed the switch rate
+and the RH/LH balance are in direct opposition, not independently tunable:
+
+| `SWITCH_PENALTY` | RH / LH | switch rate |
+|---|---|---|
+| 4.0 (shipped) | 675 / 535 | 44.3% |
+| 8.0 | 1093 / 117 | 7.2% |
+| 20.0+ | 1206 / 4 | 0.1% (== the original bug) |
+
+A flat hysteresis penalty strong enough to suppress flicker just makes the
+DP stick with whichever hand it started in for the whole piece -- i.e. it
+recreates the original bug. This is a structural property of
+per-onset-continuity hand splitting applied to a *mixed, multi-instrument*
+note stream, not a tuning gap: solo piano continuity assumes one
+performer's two hands tracking a genuinely continuous musical line each;
+"Big Rock"'s harmony_path is bass and "other" (guitar/synth/whatever
+Demucs's catch-all stem contains) mixed into one signal and transcribed as
+if it were one instrument, so consecutive "notes" in the merged stream
+often really belong to two different instruments alternating in time, not
+one line drifting in pitch. No single per-note hysteresis constant can be
+both loose enough to let genuine register separation happen and tight
+enough to prevent switching on every alternation.
+
+**The fix: stop mixing, stop reassigning.** Confirmed via direct
+transcription of the already-separated Demucs stems (`bass.wav`: 381
+notes, range 28-56; `other.wav`: 284 notes, range 28-69) that transcribing
+each stem *independently* -- bass stem -> LH, "other" stem -> RH, no
+`assign_hands` call at all -- produces a 57%/43% balanced split where each
+hand's part is one continuously-transcribed real source, structurally
+immune to flicker (there is no per-note hand decision being made at all).
+Built a prototype (bypassing `assign_hands` entirely, reusing
+`notes_to_part`/`shift_into_range`/`cap_simultaneous_notes` exactly as
+`_instrumental_variants` already does) and exported it for listening
+alongside the DP-based version; the user's verdict: the stem-split version
+sounds better. **This is the direction to implement** (see Task 5 in the
+plan) -- `_instrumental_variants` should transcribe `stems.bass` and
+`stems.other` separately instead of mixing them into `harmony_path` and
+calling `assign_hands`.
+
+**Known remaining risk, not fully resolved:** the "other" stem's range (28-
+69) overlaps the bass stem's range (28-56) at the bottom -- "other"
+occasionally dips as low as bass's floor, so RH could momentarily hold a
+lower note than LH at the same instant (a hand-crossing the old DP-based
+approach was specifically designed to penalize/avoid). The user's listening
+verdict preferred this trade-off over the flicker, but this is a real,
+named, un-eliminated risk of the new approach, not a claim that it's
+strictly better in every respect.
+
+**What this means for `assign_hands` itself (Task 2, already shipped):**
+that fix stands on its own merit independent of this pivot -- it's a real,
+verified improvement to solo piano's own hand-assignment (Spec 1's
+`notes_to_grand_staff` call site), confirmed by real-audio listening on the
+Moonlight Sonata sounding correct after the change. It is simply no longer
+what solves the instrumental branch's problem, since the instrumental
+branch will stop calling `assign_hands` at all per Task 5.
+
 ## Open risk (carried forward, not resolved by this spec)
 
 The commit that introduced `assign_hands` (`25d513b`) already flagged
