@@ -318,3 +318,24 @@ def test_empty_input_returns_empty_lists():
     rh, lh = assign_hands([])
     assert rh == []
     assert lh == []
+
+
+def test_lone_low_notes_route_to_lh_once_both_hands_are_established():
+    """The core multi-instrument-input fix: once both hands already have a
+    real pitch history (unlike a fresh piece), a lone low-register note
+    whose pitch and continuity clearly belong with LH must route there,
+    not be forced into RH by the old unconditional bypass. Mirrors the
+    real failure this fix targets (Track 3 Phase 1 real-audio finding:
+    RH 1169/LH 29 notes on a real full-band rock instrumental)."""
+    notes = [
+        # Establishes RH centroid=65, LH centroid=40 in one onset.
+        NoteEvent(start=0.0, end=0.5, pitch=65),
+        NoteEvent(start=0.0, end=0.5, pitch=40),
+    ]
+    for i, p in enumerate([42, 43, 41, 44, 38], start=1):
+        notes.append(NoteEvent(start=i * 0.5, end=i * 0.5 + 0.5, pitch=p))
+
+    rh, lh = assign_hands(notes)
+
+    assert [n.pitch for n in rh] == [65]
+    assert [n.pitch for n in lh] == [40, 42, 43, 41, 44, 38]

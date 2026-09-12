@@ -110,6 +110,15 @@ SWITCH_PENALTY = 4.0
 # chord of a piece, before either hand has any history to lean on.
 RH_MELODY_TIEBREAK_WEIGHT = 0.01
 
+# Tie-break only, for lone notes once both hands are established (see
+# assign_hands): a very small nudge back toward RH when the DP's real
+# continuity/switch signal is otherwise near-ambiguous, matching this
+# module's existing RH-leaning convention for genuine ties. Verified
+# empirically to never override a real continuity/switch signal in either
+# direction -- CONTINUITY_WEIGHT and SWITCH_PENALTY are both >= 4.0x this
+# value, so any real pitch/continuity difference still decides the split.
+LONE_NOTE_RH_BIAS = 0.5
+
 
 @dataclass
 class _Particle:
@@ -205,6 +214,9 @@ def _score_mask(particle: _Particle, group: list[NoteEvent], mask: tuple[bool, .
     if len(rh_notes) > 1:
         cost += RH_MELODY_TIEBREAK_WEIGHT * len(rh_notes)
 
+    if len(group) == 1 and lh_notes:
+        cost += LONE_NOTE_RH_BIAS
+
     return cost, new_rh_centroid, new_lh_centroid
 
 
@@ -223,16 +235,32 @@ def assign_hands(notes: list[NoteEvent]) -> tuple[list[NoteEvent], list[NoteEven
 
     for group in groups:
         n = len(group)
-        if n == 1:
-            masks = [(True,)]
-        elif n > MAX_GROUP_SIZE_FOR_DP:
+        if n > MAX_GROUP_SIZE_FOR_DP:
             top_idx = max(range(n), key=lambda i: group[i].pitch)
-            masks = [tuple(i == top_idx for i in range(n))]
+            fixed_masks = [tuple(i == top_idx for i in range(n))]
+        elif n > 1:
+            fixed_masks = _legal_masks(group)
         else:
-            masks = _legal_masks(group)
+            fixed_masks = None  # n == 1: decided per-particle below, since
+            # it depends on each particle's own centroid history.
 
         new_particles = []
         for particle in particles:
+            if fixed_masks is not None:
+                masks = fixed_masks
+            elif particle.rh_centroid is not None and particle.lh_centroid is not None:
+                # Both hands already established: let the DP weigh this
+                # lone note on its real merits instead of forcing RH.
+                masks = _legal_masks(group)
+            else:
+                # Cold start (one or both hands never used yet): preserve
+                # the original convention exactly. A never-used hand's
+                # NEW_HAND_COST == 0.0 would otherwise make an arbitrary
+                # register jump look deceptively cheap the instant either
+                # hand is still unused -- this is what
+                # test_sustained_low_melody_run_stays_in_right_hand guards
+                # against.
+                masks = [(True,)]
             for mask in masks:
                 cost_delta, new_rh, new_lh = _score_mask(particle, group, mask)
                 last_onset_notes = [
