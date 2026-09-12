@@ -32,19 +32,40 @@ from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 logger = logging.getLogger(__name__)
 
-# A real sung melody in a full-length song produces far more than this many
-# detected notes; a near-silent/noise-only vocals stem (genuinely
-# instrumental input) produces far fewer. First-pass tuning constant —
-# expect to adjust after real-audio verification (see the design spec).
-MIN_MELODY_NOTES = 8
+# A real sung melody produces a much higher rate of detected notes per
+# second than a near-silent/noise-only vocals stem (genuinely instrumental
+# input) — this is a *density*, not a raw count, because a real vocal clip
+# and a genuinely instrumental full-length song differ enormously in
+# duration: a short real-vocal clip and a long instrumental track can have
+# similar total note counts while differing ~5-8x in density. First-pass
+# tuning constant, empirically set from real-audio verification (corpus
+# A/B/C measured at 1.47-2.66 notes/s; one real instrumental track measured
+# at 0.32 notes/s) — expect to adjust further as more real audio is tested.
+MIN_MELODY_NOTE_DENSITY = 0.8  # notes per second
+
+# Below this many notes there typically isn't a long enough span to compute
+# a meaningful density (e.g. 0 or 1 notes give an undefined or degenerate
+# span) — treat anything this thin as instrumental outright, matching the
+# original predicate's behavior for the near-empty case.
+MIN_MELODY_NOTES_FOR_DENSITY_CHECK = 2
 
 
 def _is_instrumental(melody_notes: list) -> bool:
-    """True when extract_melody_notes's output is implausibly short for a
-    real sung melody — treated as "no real vocal content," routing
-    run_arrange_pipeline to the instrumental path instead of building RH
-    from near-empty or noise-artifact notes."""
-    return len(melody_notes) < MIN_MELODY_NOTES
+    """True when extract_melody_notes's output has an implausibly low note
+    rate for a real sung melody — treated as "no real vocal content,"
+    routing run_arrange_pipeline to the instrumental path instead of
+    building RH from near-empty or noise-artifact notes. Uses note density
+    (notes per second, over the span from the first note's start to the
+    last note's end) rather than a raw count, because real-audio
+    verification found raw count is confounded with clip duration (see the
+    design spec / RESUME.md history for the measurements that drove this)."""
+    if len(melody_notes) < MIN_MELODY_NOTES_FOR_DENSITY_CHECK:
+        return True
+    span = melody_notes[-1].end - melody_notes[0].start
+    if span <= 0:
+        return True
+    density = len(melody_notes) / span
+    return density < MIN_MELODY_NOTE_DENSITY
 
 
 def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):

@@ -353,8 +353,9 @@ from app.tempo.detect import BeatMap
 def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch, synthetic_piano_wav):
     import app.arrange_pipeline as pipeline_module
 
-    # At/above MIN_MELODY_NOTES so this exercises the normal (non-instrumental) path.
-    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(pipeline_module.MIN_MELODY_NOTES)]
+    # 10 notes at 1s spacing -> span ~= 9s -> density ~= 1.1/s, safely above
+    # MIN_MELODY_NOTE_DENSITY, so this exercises the normal (non-instrumental) path.
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(10)]
     fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
 
     monkeypatch.setattr(
@@ -410,7 +411,7 @@ def test_arrange_routes_to_instrumental_path_when_no_real_melody_detected(monkey
         ),
     )
     monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
-    # Fewer than MIN_MELODY_NOTES -- must route to _instrumental_variants.
+    # Below MIN_MELODY_NOTES_FOR_DENSITY_CHECK -- must route to _instrumental_variants.
     monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: [NoteEvent(start=0.0, end=0.5, pitch=60)])
     monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
     monkeypatch.setattr(pipeline_module, "detect_beat_map", lambda audio_path: BeatMap.constant(0.5))
@@ -464,8 +465,9 @@ def test_arrange_does_not_route_to_instrumental_path_with_a_real_melody(monkeypa
         ),
     )
     monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
-    # At/above MIN_MELODY_NOTES -- must stay on the existing path, unaffected.
-    plenty_of_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(pipeline_module.MIN_MELODY_NOTES)]
+    # 10 notes at 1s spacing -> span ~= 9s -> density ~= 1.1/s, safely above
+    # MIN_MELODY_NOTE_DENSITY -- must stay on the existing path, unaffected.
+    plenty_of_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(10)]
     monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: plenty_of_notes)
     monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: [NoteEvent(start=0.0, end=0.5, pitch=48)])
     monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))

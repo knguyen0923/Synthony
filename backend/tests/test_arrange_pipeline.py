@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from scipy.io import wavfile
 
-from app.arrange_pipeline import _lh_variants, mix_wav_files, MIN_MELODY_NOTES, _is_instrumental
+from app.arrange_pipeline import _lh_variants, mix_wav_files, MIN_MELODY_NOTE_DENSITY, _is_instrumental
 from app.notation.types import NoteEvent
 from app.tempo.detect import BeatMap
 
@@ -99,8 +99,9 @@ def test_run_arrange_pipeline_waits_for_a_job_slot(tmp_path, monkeypatch):
     # job_slot() actually acquires. Patch the real one.
     monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
 
-    # At/above MIN_MELODY_NOTES so this exercises the normal (non-instrumental) path.
-    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(MIN_MELODY_NOTES)]
+    # 10 notes at 1s spacing -> span ~= 9s -> density ~= 1.1/s, safely above
+    # MIN_MELODY_NOTE_DENSITY, so this exercises the normal (non-instrumental) path.
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(10)]
     fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
     monkeypatch.setattr(
         pipeline_module, "separate_stems",
@@ -202,17 +203,25 @@ def test_run_arrange_pipeline_fails_cleanly_when_slot_wait_times_out(tmp_path, m
     assert "busy" in job.detail
 
 
-def test_is_instrumental_true_when_melody_notes_are_far_below_the_threshold():
+def test_is_instrumental_true_when_below_the_note_count_floor():
     assert _is_instrumental([]) is True
+    # 1 note -- below MIN_MELODY_NOTES_FOR_DENSITY_CHECK, can't compute density.
     assert _is_instrumental([NoteEvent(start=0.0, end=0.5, pitch=60)]) is True
 
 
-def test_is_instrumental_false_at_and_above_the_threshold():
-    notes_at_threshold = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=60) for i in range(MIN_MELODY_NOTES)]
-    assert _is_instrumental(notes_at_threshold) is False
+def test_is_instrumental_true_when_note_density_is_low():
+    # Mirrors the real instrumental measurement's shape: many notes, long
+    # span, low rate. 10 notes 2s apart -- span ~= 18.3s, density ~= 0.55/s,
+    # well below MIN_MELODY_NOTE_DENSITY (0.8).
+    sparse_notes = [NoteEvent(start=float(i) * 2.0, end=float(i) * 2.0 + 0.3, pitch=60) for i in range(10)]
+    assert _is_instrumental(sparse_notes) is True
 
-    notes_above_threshold = notes_at_threshold + [NoteEvent(start=100.0, end=100.5, pitch=60)]
-    assert _is_instrumental(notes_above_threshold) is False
+
+def test_is_instrumental_false_when_note_density_is_high():
+    # Mirrors a real-vocal-like rate: 10 notes 0.4s apart -- span ~= 3.9s,
+    # density ~= 2.56/s, well above MIN_MELODY_NOTE_DENSITY (0.8).
+    dense_notes = [NoteEvent(start=float(i) * 0.4, end=float(i) * 0.4 + 0.3, pitch=60) for i in range(10)]
+    assert _is_instrumental(dense_notes) is False
 
 
 def test_instrumental_variants_splits_notes_into_both_hands_via_dp(monkeypatch):
