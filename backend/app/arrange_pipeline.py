@@ -1,3 +1,4 @@
+import logging
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -18,6 +19,8 @@ from app.notation.hand_split import SECONDS_PER_QUARTER, build_grand_staff_score
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 from app.tempo.detect import BeatMap, detect_beat_map
+
+logger = logging.getLogger(__name__)
 
 
 def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):
@@ -106,5 +109,6 @@ def run_arrange_pipeline(
 
         set_result(job_id, {"song_id": song_id, "title": title, "difficulties": difficulties})
     except Exception as exc:
+        logger.exception("arrange pipeline failed for job_id=%s song_id=%s", job_id, song_id)
         shutil.rmtree(dest_dir, ignore_errors=True)
         set_failed(job_id, str(exc))

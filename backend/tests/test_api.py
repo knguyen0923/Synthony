@@ -389,6 +389,31 @@ def test_arrange_job_failure_sets_failed_status_with_detail(monkeypatch, synthet
     assert not any(STORAGE_ROOT.iterdir())
 
 
+def test_arrange_job_failure_logs_the_exception(monkeypatch, caplog, synthetic_piano_wav):
+    import app.arrange_pipeline as pipeline_module
+
+    def boom(audio_path, output_dir):
+        raise RuntimeError("separation blew up")
+
+    monkeypatch.setattr(pipeline_module, "separate_stems", boom)
+
+    with caplog.at_level(logging.ERROR, logger="app.arrange_pipeline"):
+        with open(synthetic_piano_wav, "rb") as f:
+            response = client.post("/arrange", files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")})
+        job_id = response.json()["job_id"]
+
+        result = None
+        for _ in range(50):
+            payload = client.get(f"/arrange/{job_id}").json()
+            if payload.get("status") == "failed":
+                result = payload
+                break
+            time.sleep(0.05)
+
+    assert result == {"status": "failed", "detail": "separation blew up"}
+    assert "arrange pipeline failed" in caplog.text
+
+
 def test_arrange_status_returns_404_for_unknown_job():
     response = client.get("/arrange/does-not-exist")
     assert response.status_code == 404
