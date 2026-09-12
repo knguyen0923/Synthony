@@ -181,12 +181,11 @@ This builds and runs both backend (`http://localhost:8000`) and frontend
 `backend/.env` file (see `backend/.env.example`) and compose will pick them
 up automatically.
 
-**Apple Silicon / arm64 limitation:** the backend image currently fails to
-build natively on arm64 Docker hosts — `sphn` (a transitive dependency
-pulled in via `demucs`) has no `linux/aarch64` wheel. Work around it by
-building under emulation instead: `docker compose build --platform
-linux/amd64 backend` (slow under QEMU, and the resulting image also runs
-emulated).
+**Apple Silicon / arm64:** the backend image builds natively on arm64
+Docker hosts. `sphn` (a transitive dependency pulled in via `demucs`) has
+no `linux/aarch64` wheel on PyPI, so the Dockerfile installs a Rust
+toolchain (via rustup), `cmake`, `libopus-dev`, and `maturin` before the
+`requirements.txt` install so pip can build it from source instead.
 
 ## API
 
