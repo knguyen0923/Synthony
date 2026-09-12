@@ -30,3 +30,33 @@ def test_configure_logging_reads_log_level_env_var(monkeypatch):
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     configure_logging()
     assert logging.getLogger().level == logging.DEBUG
+
+
+def test_configure_logging_writes_to_a_rotating_file_in_addition_to_stdout(tmp_path, monkeypatch):
+    import app.logging_config as logging_config_module
+
+    monkeypatch.setattr(logging_config_module, "LOG_DIR", tmp_path / "logs")
+
+    configure_logging()
+    logging.getLogger("test-logger").info("hello from the test")
+
+    log_file = tmp_path / "logs" / "app.log"
+    assert log_file.exists()
+    assert "hello from the test" in log_file.read_text()
+
+
+def test_configure_logging_file_handler_has_rotation_configured(tmp_path, monkeypatch):
+    import logging.handlers
+    import app.logging_config as logging_config_module
+
+    monkeypatch.setattr(logging_config_module, "LOG_DIR", tmp_path / "logs")
+
+    configure_logging()
+
+    file_handlers = [
+        h for h in logging.getLogger().handlers
+        if isinstance(h, logging.handlers.RotatingFileHandler)
+    ]
+    assert len(file_handlers) == 1
+    assert file_handlers[0].maxBytes == 5 * 1024 * 1024
+    assert file_handlers[0].backupCount == 3
