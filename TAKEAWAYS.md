@@ -3,10 +3,10 @@
 A retrospective on building Synthony: an app that turns audio — a file
 upload, a YouTube link, a Spotify link, or a QR-scanned link — into
 practice-ready piano sheet music at three difficulty tiers. Built solo,
-2026-08-31 to 2026-09-11 (119 commits, 5 active build days), from empty
+2026-08-31 to 2026-09-12 (150 commits, 6 active build days), from empty
 repo to two working end-to-end transcription pipelines, a real-audio
-verification harness, and — as of the same final day — CI, structured
-logging, a concurrency guardrail, and a Docker local-run story on top.
+verification harness, CI, structured logging, a concurrency guardrail, a
+Docker local-run story, and a discovery-sweep bug-fix pass on top.
 
 ## What it does
 
@@ -154,6 +154,42 @@ subtask*, not better in general.
   substituted in — the verification a change needs shouldn't depend on
   exactly one tool being available.
 
+### Balanced metrics can still be the wrong answer
+
+A follow-up bug in the hand-splitting algorithm (it forced every "lone
+note" onset to the right hand unconditionally — correct for solo piano,
+wrong for multi-instrument input) got a real, independently-verified fix.
+But real-audio verification on the fix surfaced a second problem no
+metric had flagged: the fixed algorithm produced a well-balanced RH/LH
+note count on a rock instrumental (1169/29 → 670/540) yet sounded
+"incoherent/scattered" by ear. Sweeping the tuning parameter against the
+real note stream confirmed balance and flicker were in direct
+opposition — a value strong enough to suppress the flicker just
+recreated the original bug. The actual fix was structural, not a tuning
+number: transcribe the bass and "other" stems *separately* (bass → LH,
+other → RH) instead of mixing them into one signal and re-splitting by
+continuity, since continuity-based splitting assumes one performer's two
+hands, not two different instruments interleaved in time. Lesson: when a
+metric and your ear disagree, trust the ear and go looking for a
+structural cause, not a better-tuned constant.
+
+### A discovery sweep is worth doing even with no new feature to build
+
+Once both pipelines were stable, a dedicated pass ran a backend
+`/code-review`, a backend error-handling audit, and a frontend
+`/code-review` — not chasing any specific bug, just looking. It found
+real, previously-unnoticed gaps: Spotify ingestion was unconditionally
+broken in the default unconfigured state (`SpotifyOauthError` isn't a
+subclass of the exception type the existing handler caught, confirmed by
+direct execution, not just reading the code); a non-audio/corrupt upload
+surfaced as a raw 500 instead of a clean 422; several React components
+had real lifecycle bugs (a failed camera permission left a scan button
+permanently disabled, a file input never reset after a failed upload,
+state updates could fire after unmount). None of these were regressions
+from a specific change — they'd been latent since whenever that code was
+first written. Worth scheduling this kind of sweep periodically, not just
+reacting to bugs the user happens to notice.
+
 ### Working with an AI coding assistant deliberately
 
 - **Spec first, code second.** Non-trivial pipeline changes got a
@@ -212,11 +248,13 @@ wouldn't have:
 
 ## By the numbers
 
-- **119 commits**, empty repo to two complete pipelines plus a hardening
-  pass, across 5 active build days spanning 2026-08-31 to 2026-09-11
-- **239 automated tests**, 3,416 lines of test code vs. 2,258 lines of
-  backend source (more test code than implementation — a deliberate TDD
-  habit, not an accident)
+- **150 commits**, empty repo to two complete pipelines plus a hardening
+  pass and a discovery-sweep bug-fix pass, across 6 active build days
+  spanning 2026-08-31 to 2026-09-12
+- **256 automated backend tests** (plus a separate frontend Vitest suite),
+  3,801 lines of backend test code vs. 2,417 lines of backend source
+  (more test code than implementation — a deliberate TDD habit, not an
+  accident)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -225,30 +263,29 @@ wouldn't have:
   change, not just the unit test suite
 - **$0 hosting** — not because it's free-tier deployed, but because it
   isn't deployed anywhere yet; a personal/local project by explicit
-  choice, not by omission. A `docker compose up` local-run story exists,
-  though the backend image currently only builds natively on
-  linux/amd64 (see below)
+  choice, not by omission. A `docker compose up` local-run story exists
+  and builds natively on both linux/amd64 and arm64 (Apple Silicon)
 
 ## What's next
 
-- **Push the branch and watch CI actually run.** The workflow's config
-  was written and locally sanity-checked, but per this project's own
-  "read from anywhere, write only to non-production, and never push
-  without asking" rule, actually pushing to watch the first real run
-  happen was left for a deliberate decision, not done automatically.
-- **A known, real docker-compose bug**: `backend/.env` (Spotify
-  credentials, `MAX_CONCURRENT_JOBS`, `LOG_LEVEL`) doesn't actually reach
-  the container today — an `environment:` block in `docker-compose.yml`
-  silently overrides the `env_file` directive meant to read it, for every
-  key both specify. The fix is small (stop duplicating those keys in
-  `environment:`) but wasn't made in the same pass that found it, per this
-  project's own process for final-review findings (one fix wave, not an
-  open-ended loop). Doesn't affect file-upload or YouTube-link input.
-- **Native arm64 Docker builds** — the backend image doesn't build
-  natively on Apple Silicon (a `demucs` transitive dependency, `sphn`,
-  ships no `linux/aarch64` wheel); documented with a `--platform
-  linux/amd64` emulation workaround rather than fixed, since a real fix
-  (a Rust/maturin toolchain) needs a slow, uncertain build cycle to verify.
+Resolved since the hardening pass above: CI now runs the frontend Vitest
+suite (not just build/lint) on every push; the docker-compose
+`env_file`/`environment:` key-shadowing bug is fixed, so `backend/.env`
+credentials actually reach the container; and native arm64 Docker builds
+work (a Rust/maturin toolchain builds `sphn`, the `demucs` transitive
+dependency with no `linux/aarch64` wheel, from source).
+
+The instrumental (no-vocal-melody) arrangement path is explicitly
+**shelved** — after hearing the stem-split fix's output, the user wasn't
+sure how they felt about arrange-instrumental quality overall, and the
+decision was to stop investing further in it for now rather than keep
+tuning an open question. A discovery-sweep bug-fix pass (ingestion error
+handling, one observability gap, six frontend lifecycle bugs) shipped
+instead — see the lessons above. Current focus: a "production readiness"
+pass, not yet scoped (what that means for a personal/self-hosted project
+— deployment target, uptime expectations, etc. — needs a proper
+brainstorm before it's a plan).
+
 - **`/transcribe` still blocks the event loop** while it runs its full ML
   pipeline synchronously — pre-existing, not introduced by the hardening
   pass, and left alone deliberately at personal-project scale. Worth

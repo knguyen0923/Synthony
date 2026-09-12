@@ -25,6 +25,24 @@ screen:
   (a later revision to how the left hand is generated — see that doc's
   note on the original design's now-superseded approach).
 
+## Status
+
+Both pipelines work end-to-end and are real-audio verified (one solo
+piano recording, three real full songs, re-run before/after every
+pipeline-quality change). Not deployed anywhere — local/Docker-run only,
+by explicit choice, not by omission.
+
+**Known limitation:** Spec 2's instrumental fallback (songs with no real
+vocal melody) transcribes the bass and "other" stems separately (bass →
+LH, other → RH) rather than mixing them and re-splitting by pitch
+continuity like the vocal-melody path does — a deliberate trade-off after
+real-audio listening found the mixed+split approach caused excessive
+hand-flicker on multi-instrument input. The accepted side effect: the
+"other" stem's pitch range can occasionally dip below the bass stem's,
+so RH can sit lower than LH on the Hard tier. See
+`backend/app/arrange_pipeline.py::_instrumental_variants` and
+[`docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`](docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md).
+
 ## How it works
 
 ```
