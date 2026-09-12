@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from scipy.io import wavfile
 
-from app.arrange_pipeline import _lh_variants, mix_wav_files
+from app.arrange_pipeline import _lh_variants, mix_wav_files, MIN_MELODY_NOTES, _is_instrumental
 from app.notation.types import NoteEvent
 from app.tempo.detect import BeatMap
 
@@ -199,3 +199,16 @@ def test_run_arrange_pipeline_fails_cleanly_when_slot_wait_times_out(tmp_path, m
     job = get_job(job_id)
     assert job.status == "failed"
     assert "busy" in job.detail
+
+
+def test_is_instrumental_true_when_melody_notes_are_far_below_the_threshold():
+    assert _is_instrumental([]) is True
+    assert _is_instrumental([NoteEvent(start=0.0, end=0.5, pitch=60)]) is True
+
+
+def test_is_instrumental_false_at_and_above_the_threshold():
+    notes_at_threshold = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=60) for i in range(MIN_MELODY_NOTES)]
+    assert _is_instrumental(notes_at_threshold) is False
+
+    notes_above_threshold = notes_at_threshold + [NoteEvent(start=100.0, end=100.5, pitch=60)]
+    assert _is_instrumental(notes_above_threshold) is False

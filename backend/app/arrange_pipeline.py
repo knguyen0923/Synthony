@@ -23,6 +23,20 @@ from app.tempo.detect import BeatMap, detect_beat_map
 
 logger = logging.getLogger(__name__)
 
+# A real sung melody in a full-length song produces far more than this many
+# detected notes; a near-silent/noise-only vocals stem (genuinely
+# instrumental input) produces far fewer. First-pass tuning constant —
+# expect to adjust after real-audio verification (see the design spec).
+MIN_MELODY_NOTES = 8
+
+
+def _is_instrumental(melody_notes: list) -> bool:
+    """True when extract_melody_notes's output is implausibly short for a
+    real sung melody — treated as "no real vocal content," routing
+    run_arrange_pipeline to the instrumental path instead of building RH
+    from near-empty or noise-artifact notes."""
+    return len(melody_notes) < MIN_MELODY_NOTES
+
 
 def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):
     """Build the three difficulty tiers' RH Parts from one cleaned melody
