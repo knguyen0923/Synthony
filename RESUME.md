@@ -1,88 +1,113 @@
 # Resuming Synthony
 
-Updated 2026-09-12 (evening session). Track 3 Phase 1 (instrumental
-arrangement) is now **implemented, real-audio verified, reviewed, and
-pushed to `origin/main`**. This is what's left.
+Updated 2026-09-12 (later session). The `assign_hands` non-piano follow-up
+flagged at the end of the last session is now resolved — via a mid-course
+pivot, not the fix originally planned. Instrumental arrangement work is
+**shelved** after this; focus is moving to piano transcription quality and
+a production-readiness/bug-fix/polish pass. This is where things stand.
 
-## Track 3, Phase 1: instrumental arrangement — done, merged, one known follow-up
+## assign_hands multi-instrument follow-up — resolved, merged locally, not yet pushed
 
-Broadening `/arrange` past pop/rock, scoped to **instrumentals only**
-(orchestral/rap/multi-melody deferred to later, separate specs). Shipped
-as 5 commits on `main`:
+Merged to local `main` (fast-forward, 7 commits, tests green: 252/252).
+**Not pushed to `origin/main` yet** — hold on that until explicitly asked.
 
-- `2afc03c` — `_is_instrumental` predicate (Task 1)
-- `c550bc1` — `_instrumental_variants`, the DP hand-split (Task 2)
-- `b5a787f` — wired the branch into `run_arrange_pipeline` (Task 3)
-- `7616733` — **fix, found during mandatory real-audio verification:** the
-  original `MIN_MELODY_NOTES` raw-count threshold couldn't work for any
-  value (a real vocal song at 64 notes and a real instrumental track at 71
-  notes need opposite classifications — raw count is confounded with clip
-  duration). Replaced with a note-density check
-  (`MIN_MELODY_NOTE_DENSITY = 0.8` notes/sec).
-- `6e38e6d` — **fix, found by the final whole-branch review:** instrumental
-  RH's Easy/Medium tiers were silently keeping the lowest pitch of every
-  chord (invisible to Hard-tier-only listening); added the same
-  fail-loudly empty-harmony guard `_lh_variants` already has; richer
-  routing log line (note count + density, for future tuning data).
+What happened, in order:
 
-Full design spec (now includes both post-implementation updates above):
-`docs/superpowers/specs/2026-09-12-instrumental-arrangement-design.md`.
-Plan (all 3 tasks executed via `superpowers:subagent-driven-development`,
-per-task + final whole-branch review, both clean): `docs/superpowers/plans/2026-09-12-instrumental-arrangement.md`.
+1. **Task 1–2:** Fixed `assign_hands`'s real bug — it forced every "lone
+   note" onset unconditionally to RH, correct for solo piano but wrong for
+   multi-instrument input. Fix: once *both* hands already have an
+   established pitch centroid, let a lone note flow through the existing
+   DP cost-scoring instead of the hard bypass; keep the original bypass
+   for cold start. This fix is real and independently verified (Moonlight
+   Sonata sounded correct after) — it stands on its own for Spec 1's
+   solo-piano path (`hand_split.py`), regardless of what happened next.
+2. **Task 4 (real-audio verification):** objectively fixed the RH/LH count
+   imbalance (rock instrumental hard tier: 1169/29 → 670/540). But by-ear
+   listening found it "sounds incoherent/scattered" despite the balanced
+   counts.
+3. **Investigation:** confirmed the flicker is structural, not a tuning
+   gap — swept `SWITCH_PENALTY` against the real note stream and found
+   balance and flicker are in direct opposition (a value strong enough to
+   suppress flicker just recreates the original bug).
+4. **Pivot (Task 5):** `_instrumental_variants` now transcribes the
+   `bass` and `other` Demucs stems **separately** (bass→LH, other→RH)
+   instead of mixing them and re-splitting by pitch continuity —
+   eliminates the flicker structurally, since each hand is one
+   continuously-transcribed real source. Confirmed better by ear against
+   the actual shipped code (not just a prototype).
 
-**Known follow-up, not fixed in this pass (deliberately deferred, both by
-the plan's own text and independently affirmed by the final review):**
-`assign_hands`'s continuity-aware DP split (reused from Spec 1, tuned only
-against solo piano) produces a badly unbalanced hand split on real
-non-piano input. The one real instrumental song tested (a full-band rock
-instrumental) put 1169 notes in RH (83% of them bass-register, below MIDI
-48) and only 29 notes — all the same pitch — in LH. Routing/detection (this
-plan's actual deliverable) is correct and verified; arrangement *quality*
-on non-piano input is not. Root-cause lead from the review: `assign_hands`
-always assigns a lone note at an onset to RH, which is correct for solo
-piano but likely wrong when nearly every onset in a multi-instrument mix
-has size 1. **This needs its own investigation and its own real-audio
-verification pass** — see the spec's "Open risk" section for full detail.
-Not scheduled yet; flagging here so it doesn't get lost.
+**Known, accepted trade-off, not resolved:** the "other" stem's pitch
+range can dip below the bass stem's clamped LH range on the Hard tier, so
+RH can occasionally sit lower than LH — a hand-crossing the old DP
+approach specifically avoided. User heard both and preferred stem-split
+anyway. Listed in the plan's Deferred section if this needs picking up
+again.
+
+Spec: `docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`
+(includes the full pivot evidence). Plan: `docs/superpowers/plans/2026-09-12-hand-split-instrumental-fix.md`.
+Executed via `superpowers:subagent-driven-development`; final whole-branch
+review found 2 Important + 5 Minor stale-documentation issues (all from
+the pivot leaving old comments/log lines/docstrings behind), fixed in one
+pass, re-reviewed clean. SDD workspace already deleted.
+
+## Instrumental arrangement — shelved, explicit user decision
+
+After hearing the fixed output, the user's own words: "i dont know how i
+feel overall with the arrange instrumental yet." Explicit decision: finish
+and merge the `assign_hands`/hand-split fix (done, above), then **stop
+investing further in arrange-instrumental quality** for now — it's an open
+question to revisit later, not a blocker on anything else. Don't
+resume work on this feature without the user raising it again.
+
+## Next up (as of this session's end): piano transcription quality + production readiness
+
+Two new threads opened at the end of this session, not yet scoped or
+planned:
+
+- User flagged **"the tempo is so slow"** on a piano transcription output
+  — likely Moonlight Sonata (the real-audio verification track used
+  above), but this wasn't confirmed before the session ended. **Ask which
+  recording** before investigating.
+- User asked for a plan to get this project **"ready for production"**
+  (their words: "even though this is a personal project") plus a
+  **bug-fix-and-polish pass** on the codebase. Not yet scoped — needs a
+  proper brainstorm (what "production ready" means here: deployment
+  target, who else might use it, security/auth expectations, uptime
+  expectations, etc.) before turning into a plan.
 
 ## Everything else from before — status
 
 All previously-listed items (CI, docker-compose env-shadowing, native
-arm64 Docker builds, frontend Vitest suite) are done and pushed — see
-git history / `TAKEAWAYS.md` for detail, not repeated here since nothing
-changed on them this session.
+arm64 Docker builds, frontend Vitest suite) are done and pushed — see git
+history / `TAKEAWAYS.md` for detail.
 
 **Still not done:** wiring `npm test` into `.github/workflows/ci.yml` (CI
 currently only runs frontend build/lint) — small, deliberately left for an
-explicit decision since it's a shared CI-pipeline file.
+explicit decision since it's a shared CI-pipeline file. This is a natural
+candidate for the production-readiness pass above.
 
 ## Optional, lower priority (unchanged from before)
 
 - `/transcribe` still runs its full ML pipeline synchronously on the
   event loop — worth revisiting only if `/transcribe` needs genuine
   concurrent-request handling someday.
-- A handful of Minor findings from the hardening pass's final review, and
-  from this session's instrumental-arrangement reviews, were deliberately
-  left as-is (all confirmed low-risk/cosmetic, not bugs) — the plan's SDD
-  ledger has already been deleted (per `superpowers:subagent-driven-development`'s
-  own cleanup step, since its final review came back clean); the design
-  spec's post-implementation notes are the durable record now.
+- A handful of Minor findings from past reviews were deliberately left as
+  cosmetic/low-risk, not bugs — durable record is each work's design spec,
+  not repeated here.
 - Two long-standing, deliberately-parked items: distinguishing multiple
   simultaneous instruments within Demucs's catch-all "other" stem, and
   further LH onset-cleanup work (on hold unless listening surfaces it as
   a problem).
-- The `assign_hands` non-piano DP-split quality follow-up (see above) —
-  this is new this session, higher-priority than the other parked items
-  since it's a known real-audio-confirmed gap, not a theoretical one.
 
 ## Where to look for more context
 
 - `TAKEAWAYS.md` — the full retrospective from the production-hardening
   pass.
+- `docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`
+  and `docs/superpowers/plans/2026-09-12-hand-split-instrumental-fix.md` —
+  this session's fix, spec and plan, both updated with the pivot's
+  real-audio evidence.
 - `docs/superpowers/specs/2026-09-12-instrumental-arrangement-design.md`
   and `docs/superpowers/plans/2026-09-12-instrumental-arrangement.md` —
-  Track 3 Phase 1's spec and plan, both updated with real-audio-verification
-  and final-review findings.
-- `docs/superpowers/specs/2026-09-01-any-song-arrangement-design.md` —
-  has the original "Phase 6 (later, separate spec) — Broaden beyond
-  pop/rock" note that Track 3 picks up.
+  Track 3 Phase 1's original spec and plan (the work that surfaced the
+  `assign_hands` bug this session fixed).
