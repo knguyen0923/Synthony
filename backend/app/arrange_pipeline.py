@@ -50,22 +50,27 @@ MIN_MELODY_NOTE_DENSITY = 0.8  # notes per second
 MIN_MELODY_NOTES_FOR_DENSITY_CHECK = 2
 
 
+def _melody_note_density(melody_notes: list) -> float:
+    """Notes-per-second rate over the span from the first note's start to
+    the last note's end. Returns 0.0 (unambiguously below any sane
+    threshold) when there aren't enough notes, or the span is degenerate,
+    to compute a meaningful rate."""
+    if len(melody_notes) < MIN_MELODY_NOTES_FOR_DENSITY_CHECK:
+        return 0.0
+    span = melody_notes[-1].end - melody_notes[0].start
+    if span <= 0:
+        return 0.0
+    return len(melody_notes) / span
+
+
 def _is_instrumental(melody_notes: list) -> bool:
     """True when extract_melody_notes's output has an implausibly low note
     rate for a real sung melody — treated as "no real vocal content,"
     routing run_arrange_pipeline to the instrumental path instead of
     building RH from near-empty or noise-artifact notes. Uses note density
-    (notes per second, over the span from the first note's start to the
-    last note's end) rather than a raw count, because real-audio
-    verification found raw count is confounded with clip duration (see the
-    design spec / RESUME.md history for the measurements that drove this)."""
-    if len(melody_notes) < MIN_MELODY_NOTES_FOR_DENSITY_CHECK:
-        return True
-    span = melody_notes[-1].end - melody_notes[0].start
-    if span <= 0:
-        return True
-    density = len(melody_notes) / span
-    return density < MIN_MELODY_NOTE_DENSITY
+    (see _melody_note_density) rather than a raw count, because real-audio
+    verification found raw count is confounded with clip duration."""
+    return _melody_note_density(melody_notes) < MIN_MELODY_NOTE_DENSITY
 
 
 def _rh_variants(melody_notes, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None):
@@ -110,6 +115,8 @@ def _instrumental_variants(
     _rh_variants/_lh_variants' shape exactly so downstream tier derivation
     and build_grand_staff_score's per-tier loop are unaffected."""
     notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    if not notes:
+        raise ValueError("No harmonic content detected")
     rh_notes, lh_notes = assign_hands(notes)
     rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
     lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
@@ -121,8 +128,8 @@ def _instrumental_variants(
     )
 
     rh_variants = {
-        "easy": shift_into_range(quantize_part(rh_base, EASY_GRID), *EASY_RH_RANGE),
-        "medium": shift_into_range(quantize_part(rh_base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
+        "easy": shift_into_range(quantize_part(rh_base, EASY_GRID, max_voices=1), *EASY_RH_RANGE),
+        "medium": shift_into_range(quantize_part(rh_base, MEDIUM_GRID, max_voices=MAX_VOICING_TONES), *MEDIUM_RH_RANGE),
         "hard": rh_base,
     }
     lh_variants = {
@@ -175,7 +182,10 @@ def run_arrange_pipeline(
 
             set_status(job_id, "arranging")
             if _is_instrumental(melody_notes):
-                logger.info("job %s: no real vocal melody detected, using DP hand-split", job_id)
+                logger.info(
+                    "job %s: no real vocal melody detected (%d notes, %.2f notes/s), using DP hand-split",
+                    job_id, len(melody_notes), _melody_note_density(melody_notes),
+                )
                 rh_variants, lh_variants = _instrumental_variants(str(harmony_path), seconds_per_quarter, beat_map)
             else:
                 lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)

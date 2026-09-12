@@ -309,3 +309,74 @@ def test_instrumental_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_giv
 
     rh_note = list(rh_variants["hard"].flatten().notes)[0]
     assert rh_note.offset == 1.0  # 1.0 QL, not the 2.0 QL a fixed 0.5s/quarter default would give
+
+
+def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_caps_as_the_normal_path(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    # Non-empty so the Fix-2 guard doesn't trip; assign_hands is mocked
+    # directly below so its actual content doesn't matter.
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: [
+        NoteEvent(start=0.0, end=0.1, pitch=60, velocity=0.5),
+    ])
+    rh_chord = [
+        NoteEvent(start=0.0, end=2.0, pitch=60, velocity=0.5),
+        NoteEvent(start=0.0, end=2.0, pitch=64, velocity=0.7),
+        NoteEvent(start=0.0, end=2.0, pitch=67, velocity=0.6),
+        NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.95),
+    ]
+    lh_chord = [
+        NoteEvent(start=0.0, end=2.0, pitch=36, velocity=0.5),
+        NoteEvent(start=0.0, end=2.0, pitch=40, velocity=0.7),
+        NoteEvent(start=0.0, end=2.0, pitch=43, velocity=0.6),
+    ]
+    monkeypatch.setattr(pipeline_module, "assign_hands", lambda notes: (rh_chord, lh_chord))
+
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+
+    # RH Easy: exactly 1 voice (the highest-velocity note), within EASY_RH_RANGE.
+    # This is the regression guard for Fix 1 -- before the fix this returned
+    # the LOWEST pitch (60) via "first encountered", not the highest-velocity
+    # one (72).
+    rh_easy_notes = list(rh_variants["easy"].flatten().notes)
+    assert len(rh_easy_notes) == 1
+    assert all(
+        pipeline_module.EASY_RH_RANGE[0] <= n.pitch.midi <= pipeline_module.EASY_RH_RANGE[1]
+        for n in rh_easy_notes
+    )
+
+    # RH Medium: at most MAX_VOICING_TONES voices (same constant LH Medium
+    # already uses), more than 1 (regression guard against silently
+    # collapsing back to single-voice), within MEDIUM_RH_RANGE.
+    rh_medium_notes = list(rh_variants["medium"].flatten().notes)
+    assert 1 < len(rh_medium_notes) <= pipeline_module.MAX_VOICING_TONES
+    assert all(
+        pipeline_module.MEDIUM_RH_RANGE[0] <= n.pitch.midi <= pipeline_module.MEDIUM_RH_RANGE[1]
+        for n in rh_medium_notes
+    )
+
+    # LH Easy/Medium: same grids/ranges/voice caps _lh_variants already uses
+    # -- unaffected by this fix, asserted here as the same regression
+    # contract the spec asks for on both hands.
+    lh_easy_notes = list(lh_variants["easy"].flatten().notes)
+    assert len(lh_easy_notes) == 1
+    assert all(
+        pipeline_module.EASY_LH_RANGE[0] <= n.pitch.midi <= pipeline_module.EASY_LH_RANGE[1]
+        for n in lh_easy_notes
+    )
+
+    lh_medium_notes = list(lh_variants["medium"].flatten().notes)
+    assert len(lh_medium_notes) <= pipeline_module.MAX_VOICING_TONES
+    assert all(
+        pipeline_module.MEDIUM_LH_RANGE[0] <= n.pitch.midi <= pipeline_module.MEDIUM_LH_RANGE[1]
+        for n in lh_medium_notes
+    )
+
+
+def test_instrumental_variants_raises_when_no_harmonic_content_detected(monkeypatch):
+    import app.arrange_pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: [])
+
+    with pytest.raises(ValueError, match="No harmonic content detected"):
+        pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
