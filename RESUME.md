@@ -59,21 +59,25 @@ investing further in arrange-instrumental quality** for now — it's an open
 question to revisit later, not a blocker on anything else. Don't
 resume work on this feature without the user raising it again.
 
-## Next up (as of this session's end): piano transcription quality + production readiness
+Additional data point for that future revisit: user also felt **Big
+Rock's tempo sounds too slow** in the arrangement output. Not investigated
+— explicitly logged rather than acted on, since it's the same shelved
+feature.
 
-Two new threads opened at the end of this session, not yet scoped or
-planned:
+## Next up (as of this session's end): production readiness + bug fix/polish
 
-- User flagged **"the tempo is so slow"** on a piano transcription output
-  — likely Moonlight Sonata (the real-audio verification track used
-  above), but this wasn't confirmed before the session ended. **Ask which
-  recording** before investigating.
+- User flagged **"the tempo is so slow"** on **Big Rock** (the shelved
+  instrumental track above, not a piano transcription as first assumed).
+  Explicit decision: log it here, don't investigate now — it's another
+  data point for whenever arrange-instrumental gets revisited, not a
+  separate active thread.
 - User asked for a plan to get this project **"ready for production"**
   (their words: "even though this is a personal project") plus a
   **bug-fix-and-polish pass** on the codebase. Not yet scoped — needs a
   proper brainstorm (what "production ready" means here: deployment
   target, who else might use it, security/auth expectations, uptime
-  expectations, etc.) before turning into a plan.
+  expectations, etc.) before turning into a plan. This is the actual next
+  work thread.
 
 ## Everything else from before — status
 
