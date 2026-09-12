@@ -418,7 +418,7 @@ def test_arrange_routes_to_instrumental_path_when_no_real_melody_detected(monkey
 
     instrumental_called = {}
 
-    def fake_instrumental_variants(harmony_path, seconds_per_quarter, beat_map=None):
+    def fake_instrumental_variants(bass_path, other_path, seconds_per_quarter, beat_map=None):
         instrumental_called["called"] = True
         rh_part = stream.Part(id="RH")
         rh_part.insert(0.0, note.Note("C4"))

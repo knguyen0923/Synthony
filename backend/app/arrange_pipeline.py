@@ -16,7 +16,6 @@ from app.export import export_musicxml
 from app.jobs import set_failed, set_result, set_status
 from app.lh.extract import HARD_LH_RANGE, LH_MINIMUM_NOTE_LENGTH_MS, build_lh_part, extract_lh_notes
 from app.melody.extract import build_melody_part, extract_melody_notes
-from app.notation.hand_assignment import assign_hands
 from app.notation.hand_split import (
     MAX_SIMULTANEOUS_VOICES_PER_HAND,
     SECONDS_PER_QUARTER,
@@ -106,18 +105,24 @@ def _lh_variants(harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUA
 
 
 def _instrumental_variants(
-    harmony_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
+    bass_path: str, other_path: str, seconds_per_quarter: float = SECONDS_PER_QUARTER, beat_map: Optional[BeatMap] = None
 ):
     """RH/LH variants for a song with no real vocal melody (see
-    _is_instrumental): transcribe the harmony mix directly and split it
-    into hands via Spec 1's continuity-aware DP (assign_hands) instead of
-    Spec 2's usual vocals-are-RH/bass+other-are-LH fixed roles. Mirrors
-    _rh_variants/_lh_variants' shape exactly so downstream tier derivation
-    and build_grand_staff_score's per-tier loop are unaffected."""
-    notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
-    if not notes:
+    _is_instrumental): transcribes the bass and "other" Demucs stems
+    SEPARATELY -- bass -> LH, "other" -> RH -- instead of mixing them into
+    one harmony signal and re-splitting by pitch continuity (assign_hands).
+    Real-audio verification found the mixed+DP-split approach produces a
+    reasonable RH/LH note-count balance but excessive hand-flicker (~44%
+    of adjacent notes swapping hands) on real multi-instrument input,
+    since continuity-based splitting assumes one performer's two hands,
+    not two different instruments interleaved in time. Each hand's part is
+    therefore one continuously-transcribed real source, avoiding flicker
+    structurally rather than by tuning. See the design spec's
+    "Post-implementation update" section for the real-audio evidence."""
+    rh_notes = transcribe_audio_to_notes(other_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    lh_notes = transcribe_audio_to_notes(bass_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    if not rh_notes and not lh_notes:
         raise ValueError("No harmonic content detected")
-    rh_notes, lh_notes = assign_hands(notes)
     rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
     lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
 
@@ -186,7 +191,7 @@ def run_arrange_pipeline(
                     "job %s: no real vocal melody detected (%d notes, %.2f notes/s), using DP hand-split",
                     job_id, len(melody_notes), _melody_note_density(melody_notes),
                 )
-                rh_variants, lh_variants = _instrumental_variants(str(harmony_path), seconds_per_quarter, beat_map)
+                rh_variants, lh_variants = _instrumental_variants(str(stems.bass), str(stems.other), seconds_per_quarter, beat_map)
             else:
                 lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
                 rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)

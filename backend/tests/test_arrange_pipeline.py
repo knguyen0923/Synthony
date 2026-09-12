@@ -224,42 +224,52 @@ def test_is_instrumental_false_when_note_density_is_high():
     assert _is_instrumental(dense_notes) is False
 
 
-def test_instrumental_variants_splits_notes_into_both_hands_via_dp(monkeypatch):
+def _fake_transcribe_by_path(bass_notes, other_notes):
+    """Returns a fake transcribe_audio_to_notes that returns bass_notes for
+    a path containing 'bass' and other_notes for a path containing 'other'
+    -- matches how _instrumental_variants calls it once per stem path."""
+    def fake(audio_path, minimum_note_length=None):
+        if "bass" in audio_path:
+            return bass_notes
+        if "other" in audio_path:
+            return other_notes
+        raise AssertionError(f"unexpected audio_path: {audio_path}")
+    return fake
+
+
+def test_instrumental_variants_transcribes_bass_stem_to_lh_and_other_stem_to_rh(monkeypatch):
     import app.arrange_pipeline as pipeline_module
 
-    # A held low note plus a held high note at the same onset -- assign_hands'
-    # DP splits a lone onset by pitch when there's no established continuity
-    # yet, so this should land as one RH note and one LH note.
-    fake_notes = [
-        NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.8),  # high
-        NoteEvent(start=0.0, end=2.0, pitch=48, velocity=0.8),  # low
-    ]
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+    bass_notes = [NoteEvent(start=0.0, end=2.0, pitch=40, velocity=0.8)]
+    other_notes = [NoteEvent(start=0.0, end=2.0, pitch=72, velocity=0.8)]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(bass_notes, other_notes)
+    )
 
-    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
 
     assert set(rh_variants.keys()) == {"easy", "medium", "hard"}
     assert set(lh_variants.keys()) == {"easy", "medium", "hard"}
     rh_pitches = [n.pitch.midi for n in rh_variants["hard"].flatten().notes]
     lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
     assert rh_pitches == [72]
-    assert lh_pitches == [48]
+    assert lh_pitches == [40]
 
 
 def test_instrumental_variants_caps_simultaneous_voices_per_hand(monkeypatch):
     import app.arrange_pipeline as pipeline_module
 
-    # Five simultaneous high notes: assign_hands' hard span cutoff (2
-    # octaves) and RH's melody tie-break will put some/all in RH; whichever
-    # hand ends up with more than MAX_SIMULTANEOUS_VOICES_PER_HAND (4) must
-    # get capped by cap_simultaneous_notes.
-    fake_notes = [
+    # Five simultaneous notes from the "other" stem -- more than
+    # MAX_SIMULTANEOUS_VOICES_PER_HAND (4) -- must get capped.
+    other_notes = [
         NoteEvent(start=0.0, end=2.0, pitch=pitch, velocity=velocity)
         for pitch, velocity in [(60, 0.9), (62, 0.8), (64, 0.7), (65, 0.6), (67, 0.1)]
     ]
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], other_notes)
+    )
 
-    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
 
     hard_notes = list(rh_variants["hard"].flatten().notes)
     assert len(hard_notes) <= 4
@@ -269,43 +279,51 @@ def test_instrumental_variants_lh_stays_in_the_hard_lh_range(monkeypatch):
     import app.arrange_pipeline as pipeline_module
     from app.lh.extract import HARD_LH_RANGE
 
-    fake_notes = [
-        NoteEvent(start=0.0, end=1.0, pitch=90, velocity=0.9),  # high -- RH by span/tiebreak
-        NoteEvent(start=0.0, end=1.0, pitch=84, velocity=0.5),  # also high, but should land LH and get shifted down
+    bass_notes = [
+        NoteEvent(start=0.0, end=1.0, pitch=90, velocity=0.9),
+        NoteEvent(start=0.0, end=1.0, pitch=84, velocity=0.5),
     ]
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(bass_notes, [])
+    )
 
-    _rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+    _rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
 
     lh_pitches = [n.pitch.midi for n in lh_variants["hard"].flatten().notes]
     assert all(HARD_LH_RANGE[0] <= p <= HARD_LH_RANGE[1] for p in lh_pitches)
 
 
-def test_instrumental_variants_passes_minimum_note_length_to_transcription(monkeypatch):
+def test_instrumental_variants_passes_minimum_note_length_to_both_transcriptions(monkeypatch):
     import app.arrange_pipeline as pipeline_module
     from app.lh.extract import LH_MINIMUM_NOTE_LENGTH_MS
 
-    captured = {}
+    captured = []
 
     def fake_transcribe(audio_path, minimum_note_length=None):
-        captured["minimum_note_length"] = minimum_note_length
+        captured.append((audio_path, minimum_note_length))
         return [NoteEvent(start=0.0, end=1.0, pitch=60, velocity=0.5)]
 
     monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", fake_transcribe)
 
-    pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+    pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
 
-    assert captured["minimum_note_length"] == LH_MINIMUM_NOTE_LENGTH_MS
+    assert len(captured) == 2
+    assert all(minimum_note_length == LH_MINIMUM_NOTE_LENGTH_MS for _path, minimum_note_length in captured)
+    assert {path for path, _ in captured} == {"fake/bass.wav", "fake/other.wav"}
 
 
 def test_instrumental_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_given(monkeypatch):
     import app.arrange_pipeline as pipeline_module
 
-    fake_notes = [NoteEvent(start=1.0, end=2.0, pitch=72, velocity=0.9)]
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: fake_notes)
+    other_notes = [NoteEvent(start=1.0, end=2.0, pitch=72, velocity=0.9)]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], other_notes)
+    )
 
     beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM, unlike the 120 BPM default
-    rh_variants, _lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5, beat_map=beat_map)
+    rh_variants, _lh_variants = pipeline_module._instrumental_variants(
+        "fake/bass.wav", "fake/other.wav", 0.5, beat_map=beat_map
+    )
 
     rh_note = list(rh_variants["hard"].flatten().notes)[0]
     assert rh_note.offset == 1.0  # 1.0 QL, not the 2.0 QL a fixed 0.5s/quarter default would give
@@ -314,11 +332,6 @@ def test_instrumental_variants_uses_a_beat_map_instead_of_a_fixed_tempo_when_giv
 def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_caps_as_the_normal_path(monkeypatch):
     import app.arrange_pipeline as pipeline_module
 
-    # Non-empty so the Fix-2 guard doesn't trip; assign_hands is mocked
-    # directly below so its actual content doesn't matter.
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: [
-        NoteEvent(start=0.0, end=0.1, pitch=60, velocity=0.5),
-    ])
     rh_chord = [
         NoteEvent(start=0.0, end=2.0, pitch=60, velocity=0.5),
         NoteEvent(start=0.0, end=2.0, pitch=64, velocity=0.7),
@@ -330,14 +343,13 @@ def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_c
         NoteEvent(start=0.0, end=2.0, pitch=40, velocity=0.7),
         NoteEvent(start=0.0, end=2.0, pitch=43, velocity=0.6),
     ]
-    monkeypatch.setattr(pipeline_module, "assign_hands", lambda notes: (rh_chord, lh_chord))
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path(lh_chord, rh_chord)
+    )
 
-    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+    rh_variants, lh_variants = pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
 
     # RH Easy: exactly 1 voice (the highest-velocity note), within EASY_RH_RANGE.
-    # This is the regression guard for Fix 1 -- before the fix this returned
-    # the LOWEST pitch (60) via "first encountered", not the highest-velocity
-    # one (72).
     rh_easy_notes = list(rh_variants["easy"].flatten().notes)
     assert len(rh_easy_notes) == 1
     assert all(
@@ -345,9 +357,7 @@ def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_c
         for n in rh_easy_notes
     )
 
-    # RH Medium: at most MAX_VOICING_TONES voices (same constant LH Medium
-    # already uses), more than 1 (regression guard against silently
-    # collapsing back to single-voice), within MEDIUM_RH_RANGE.
+    # RH Medium: at most MAX_VOICING_TONES voices, more than 1, within MEDIUM_RH_RANGE.
     rh_medium_notes = list(rh_variants["medium"].flatten().notes)
     assert 1 < len(rh_medium_notes) <= pipeline_module.MAX_VOICING_TONES
     assert all(
@@ -355,9 +365,7 @@ def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_c
         for n in rh_medium_notes
     )
 
-    # LH Easy/Medium: same grids/ranges/voice caps _lh_variants already uses
-    # -- unaffected by this fix, asserted here as the same regression
-    # contract the spec asks for on both hands.
+    # LH Easy/Medium: same grids/ranges/voice caps _lh_variants already uses.
     lh_easy_notes = list(lh_variants["easy"].flatten().notes)
     assert len(lh_easy_notes) == 1
     assert all(
@@ -376,7 +384,7 @@ def test_instrumental_variants_easy_medium_use_the_same_grids_ranges_and_voice_c
 def test_instrumental_variants_raises_when_no_harmonic_content_detected(monkeypatch):
     import app.arrange_pipeline as pipeline_module
 
-    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", lambda audio_path, minimum_note_length=None: [])
+    monkeypatch.setattr(pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], []))
 
     with pytest.raises(ValueError, match="No harmonic content detected"):
-        pipeline_module._instrumental_variants("fake/harmony.wav", 0.5)
+        pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
