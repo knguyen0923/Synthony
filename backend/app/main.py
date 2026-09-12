@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.arrange_pipeline import run_arrange_pipeline
+from app.concurrency import NoJobSlotAvailable, job_slot
 from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
 from app.tempo.detect import detect_beat_map
@@ -161,25 +162,30 @@ async def transcribe(
     try:
         ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
 
-        transcription = transcribe_piano_audio_to_notes(str(ingested.path))
-        notes = transcription.notes
-        if not notes:
-            raise HTTPException(status_code=422, detail="No pitched content detected")
-
-        beat_map = detect_beat_map(str(ingested.path))
-
         title = ingested.title
-        score = notes_to_grand_staff(
-            notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events
-        )
-        variants = generate_variants(score)
+        try:
+            with job_slot(blocking=False):
+                transcription = transcribe_piano_audio_to_notes(str(ingested.path))
+                notes = transcription.notes
+                if not notes:
+                    raise HTTPException(status_code=422, detail="No pitched content detected")
 
-        for tier, variant_score in (
-            ("easy", variants.easy),
-            ("medium", variants.medium),
-            ("hard", variants.hard),
-        ):
-            export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
+                beat_map = detect_beat_map(str(ingested.path))
+
+                score = notes_to_grand_staff(
+                    notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events
+                )
+                variants = generate_variants(score)
+
+                for tier, variant_score in (
+                    ("easy", variants.easy),
+                    ("medium", variants.medium),
+                    ("hard", variants.hard),
+                ):
+                    export_musicxml(variant_score, dest_dir / f"{tier}.musicxml")
+        except NoJobSlotAvailable as exc:
+            logger.warning("transcribe rejected for song_id=%s: %s", song_id, exc)
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         write_metadata(song_id, title=title, source_type=ingested.source_type, source_url=ingested.source_url)
         evict_oldest_songs()

@@ -177,6 +177,23 @@ def test_transcribe_expected_validation_failure_does_not_log_an_error(monkeypatc
     assert "transcribe failed" not in caplog.text
 
 
+def test_transcribe_returns_503_when_no_job_slot_available(monkeypatch, synthetic_piano_wav):
+    import threading
+
+    import app.concurrency as concurrency_module
+
+    monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
+
+    with concurrency_module.job_slot():  # occupy the only slot
+        with open(synthetic_piano_wav, "rb") as f:
+            response = client.post(
+                "/transcribe",
+                files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")},
+            )
+
+    assert response.status_code == 503
+
+
 def test_cors_allows_frontend_dev_origin():
     # The frontend dev server runs on http://localhost:5173 and calls this
     # API cross-origin; the browser only exposes the response if the server
