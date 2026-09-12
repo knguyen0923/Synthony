@@ -207,6 +207,7 @@ def run_arrange_pipeline(
                 export_musicxml(score, dest_dir / f"{tier}.musicxml")
                 difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 
+            shutil.rmtree(dest_dir / "stems", ignore_errors=True)
             write_metadata(song_id, title=title, source_type=source_type, source_url=source_url, pipeline="arrange")
             evict_oldest_songs()
 

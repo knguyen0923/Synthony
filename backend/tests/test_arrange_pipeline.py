@@ -203,6 +203,46 @@ def test_run_arrange_pipeline_fails_cleanly_when_slot_wait_times_out(tmp_path, m
     assert "busy" in job.detail
 
 
+def test_run_arrange_pipeline_deletes_the_stems_directory_after_success(tmp_path, monkeypatch):
+    """Demucs's separated stem WAVs (and the mixed harmony.wav) are never
+    read again once all three MusicXML tiers are exported -- they must
+    not linger on disk forever. Real separate_stems() is mocked here (as
+    in the job-slot tests above), so this test pre-creates a stems/
+    directory with a dummy file to stand in for what the real call would
+    have left behind, and asserts it's gone once the pipeline finishes
+    successfully."""
+    import app.arrange_pipeline as pipeline_module
+
+    (tmp_path / "stems").mkdir()
+    (tmp_path / "stems" / "vocals.wav").write_bytes(b"fake")
+
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(10)]
+    fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=tmp_path / "stems" / "vocals.wav", drums=tmp_path / "stems" / "drums.wav",
+            bass=tmp_path / "stems" / "bass.wav", other=tmp_path / "stems" / "other.wav",
+        ),
+    )
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: fake_notes)
+    monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: fake_lh_notes)
+    monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
+    monkeypatch.setattr(pipeline_module, "detect_beat_map", lambda audio_path: BeatMap.constant(0.5))
+
+    job_id = create_job()
+    run_arrange_pipeline(
+        job_id=job_id, audio_path="fake.wav", title="Song",
+        source_type="upload", source_url=None, song_id="fake-song-id",
+        dest_dir=tmp_path,
+    )
+
+    assert get_job(job_id).status == "done"
+    assert not (tmp_path / "stems").exists()
+    assert (tmp_path / "hard.musicxml").exists()
+
+
 def test_is_instrumental_true_when_below_the_note_count_floor():
     assert _is_instrumental([]) is True
     # 1 note -- below MIN_MELODY_NOTES_FOR_DENSITY_CHECK, can't compute density.
