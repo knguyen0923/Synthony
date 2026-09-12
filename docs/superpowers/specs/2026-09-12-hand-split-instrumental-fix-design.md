@@ -71,12 +71,15 @@ one is no longer cached). Measure the fraction of onset groups of size 1,
 and for a sample of them, whether another note starts within a small
 window after (e.g. 20-50ms) that a wider tolerance would have merged in.
 
-**Go/no-go:** if mis-grouping is negligible, `ONSET_ROUND_DECIMALS` is
-left unchanged, noted as ruled out in this spec's follow-up record. If
-material, widening the tolerance (or adding a small merge-window pass
-in `_group_by_onset`) is implemented and **verified independently**
-(its own before/after real-audio check) before the DP-scoring change
-below, so the two effects aren't conflated in listening tests.
+**Result (measured):** On the real full-band rock instrumental track
+(arrange_instrumental_big_rock.mp3), 967 onset groups were observed, 925
+of them size-1 (95.7%). Of those lone-note onsets, only 85 (9.2%) fell
+within 30ms of the next onset — below the 15% MATERIAL_THRESHOLD. **Ruled
+out:** mis-grouping from `ONSET_ROUND_DECIMALS` is not a material
+contributor. The observed lone-note rate is mostly genuine (bass and chord
+tones landing on distinct onsets), not a grouping artifact. `ONSET_ROUND_DECIMALS`
+is left unchanged; proceed to Task 2 (the DP-scoring fix) without a
+merge-window implementation.
 
 ## Fix: DP-scored lone-note assignment with a soft RH bias
 
