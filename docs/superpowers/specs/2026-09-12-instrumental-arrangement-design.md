@@ -1,233 +1,245 @@
-# Instrumental Arrangement Design (Track 3, Phase 1)
+# Instrumental Arrangement Design (Track 3, Spec A)
 
 ## Motivation
 
-Spec 2's `/arrange` pipeline hard-wires four Demucs stems to two fixed
-roles: `vocals` becomes RH (forced monophonic via
-`melody.extract.reduce_to_monophonic`), `bass`+`other` becomes LH. This
-was explicitly deferred scope from the original Spec 2 design (see that
-doc's "Phase 6 (later, separate spec) — Broaden beyond pop/rock" note):
-instrumentals, rap, orchestral, and multi-melody songs all break this
-assumption in different ways.
+Spec 2's `/arrange` pipeline hard-wires two fixed roles onto Demucs's four
+stems: `vocals` always becomes RH (forced monophonic), `bass`+`other`
+always becomes LH (real polyphonic transcription, capped in voice count).
+This is correct for pop/rock songs with a sung lead line, but for a
+genuinely instrumental song — no vocals at all — the `vocals` stem is
+near-silent, `extract_melody_notes` finds little or nothing, and the
+result is a silently degraded output: not a crash, just an empty or
+near-empty right hand for the whole piece, with no error signal to the
+user. This was flagged as the highest-priority case in Track 3's broader
+"beyond pop/rock" research specifically because of that silent-failure
+risk — worse than an explicit rejection. Orchestral, rap, and true
+multi-melody support are explicitly out of scope for this spec (see the
+Track 3 research writeup); orchestral in particular stacks a second,
+unvalidated risk (Demucs's stem categories don't match orchestral
+instrumentation at all) that this spec doesn't take on.
 
-A research pass (this session) found the four cases don't share one
-fix. Instrumentals and orchestral share a root cause — no single "the
-melody" exists to isolate onto a vocals stem — and a shared candidate
-fix: bypass the stem-role split entirely and reuse Spec 1's
-already-working, already-tested continuity-aware DP hand-split
-(`notation/hand_assignment.assign_hands`, invoked via
-`notation.hand_split.notes_to_grand_staff`). Rap and multi-melody are a
-different problem (the transcription model itself can't represent the
-content, or two independently valid melodies exist at once) needing new
-capability, not reuse — deliberately out of scope here, to be
-brainstormed as a separate spec later.
-
-This is Phase 1 of that split: **instrumentals only**. Orchestral is
-deferred past this phase — it stacks a second, independent risk on top
-(Demucs's stem categories don't match orchestral instrumentation at
-all, and *no* transcription model here has been validated on full
-orchestral mixes), and narrowing to the easier case first lets the
-shared architecture (bypass stem-split, reuse Spec 1's DP) get proven
-before betting a spec on the harder one.
+The chosen fix reuses machinery that already exists and is already
+proven, rather than inventing new melody-detection logic: Spec 1's
+continuity-aware DP hand-split (`app.notation.hand_assignment.
+assign_hands`) was built to solve exactly this problem — "many
+simultaneous voices, no predetermined melody/harmony split" — for solo
+piano transcription. An instrumental song's harmony content (bass+other,
+same audio Spec 2 already separates and mixes for today's LH) is the same
+kind of input: no single predetermined "the melody," just notes that need
+splitting into two physically playable hands.
 
 ## Current State (for reference)
 
-- `arrange_pipeline.run_arrange_pipeline`: after `separate_stems`,
-  unconditionally calls `extract_melody_notes(str(stems.vocals))` for
-  RH and `mix_wav_files(stems.bass, stems.other, ...)` +
-  `extract_lh_notes(harmony_path)` for LH. No branching exists on
-  whether the vocals stem actually contains anything.
-- For a track with no vocal content, Demucs's vocals stem is near-silent
-  (noise floor / faint leakage, not a clean zero). `extract_melody_notes`
-  runs Basic Pitch on it anyway; `reduce_to_monophonic` then returns
-  either an empty list or a scatter of spurious low-confidence notes.
-  Today this produces a **silent, undetected failure** — RH comes out
-  empty or musically nonsensical, with no error surfaced anywhere.
-- `notation.hand_assignment.assign_hands(notes) -> (rh_notes, lh_notes)`:
-  the continuity-aware DP search (span, continuity, crossing, switching
-  costs — see that module's docstring) already used by Spec 1
-  (`/transcribe`) to split one polyphonic transcription into two hands
-  with no predetermined melody/harmony source. This is genre-agnostic —
-  it operates purely on note timing/pitch, with no assumption about
-  what instrument produced the audio.
-- `notation.hand_split.notes_to_grand_staff(notes, title, beat_map,
-  pedal_events) -> stream.Score`: calls `assign_hands`, caps each hand to
-  `MAX_SIMULTANEOUS_VOICES_PER_HAND` via `voice_cap.cap_simultaneous_notes`,
-  builds both `stream.Part`s, and assembles the full grand-staff Score
-  (clefs, key signature via a separate step, piano brace) — this is Spec
-  1's exact Hard-tier construction, already used by `main.py`'s
-  `/transcribe` endpoint.
-- `difficulty.engine.generate_variants(score) -> DifficultyVariants`:
-  Spec 1's exact difficulty engine (`to_easy`/`to_medium`/`to_hard` from
-  `difficulty/easy.py`, `medium.py`, `hard.py`), operating on a full
-  grand-staff `Score` via `get_hand_parts`/`build_grand_staff_score`, not
-  on the RH/LH-specific variant builders `arrange_pipeline.py` uses today
-  (`_rh_variants`/`_lh_variants`, which assume the vocals-monophonic /
-  bass+other-polyphonic split).
-- `transcription.audio_to_midi.transcribe_audio_to_notes(audio_path) ->
-  list[NoteEvent]`: the shared raw Basic Pitch call already used by both
-  `melody.extract.extract_melody_notes` (vocals, then reduced to
-  monophonic) and `lh.extract.extract_lh_notes` (harmony mix, then capped
-  to `HARD_MAX_VOICES`).
+- `arrange_pipeline.py::run_arrange_pipeline` always calls
+  `extract_melody_notes(stems.vocals)` for RH and `extract_lh_notes
+  (harmony_path)` (where `harmony_path = mix_wav_files(stems.bass,
+  stems.other, ...)`) for LH, unconditionally — no branching on input
+  content.
+- `app.melody.extract.extract_melody_notes`: Basic Pitch on the vocals
+  stem, then `reduce_to_monophonic` collapses overlaps to one line, always
+  producing a monophonic RH source.
+- `app.lh.extract.extract_lh_notes(audio_path, max_voices=HARD_MAX_VOICES)`:
+  Basic Pitch on the harmony mix with `minimum_note_length=
+  LH_MINIMUM_NOTE_LENGTH_MS` (180ms, tuned for busy non-piano audio), then
+  `cap_simultaneous_notes` bounds simultaneous voices to a plausible
+  per-hand maximum (4).
+- `app.notation.hand_assignment.assign_hands(notes) -> (rh_notes,
+  lh_notes)`: Spec 1's DP split — used today only by
+  `app.notation.hand_split.notes_to_grand_staff`, which is Spec 1's
+  sole entry point (`app.main::transcribe`). Spec 2 never calls it.
+- `app.notation.hand_split.notes_to_part(notes, part_id, seconds_per_quarter,
+  beat_map) -> stream.Part`: builds a single Part from a flat note list,
+  in onset order, no hand-splitting — the generic building block both
+  `build_melody_part` and `build_lh_part` wrap with pipeline-specific
+  extras (RH's legato cleanup, LH's register shift).
+- `app.notation.hand_split.build_grand_staff_score(rh, lh, title,
+  key_signature)`: shared score assembler, already supports an optional
+  `key_signature` — used by Spec 2's per-tier loop today, **not** forwarded
+  by `notes_to_grand_staff` (Spec 1 doesn't detect a key at all, so this
+  never came up before).
+- `app.difficulty.quantize.quantize_part(part, grid, max_voices=1)` and
+  `app.difficulty.range_shift.shift_into_range(part, low, high)`: the
+  generic tier-derivation pair both hands already use in
+  `arrange_pipeline._rh_variants`/`_lh_variants`.
 
 ## New Architecture
 
 ```
-stems = separate_stems(audio_path)  [unchanged]
-  │
-  ▼
-is_instrumental(stems.vocals)?  [NEW — see Detection below]
-  │
-  ├─ no (has vocals) ──────────► existing path, unchanged:
-  │                              extract_melody_notes(vocals) → RH
-  │                              mix_wav_files(bass, other) → extract_lh_notes → LH
-  │                              _rh_variants / _lh_variants (arrange_pipeline.py)
-  │
-  └─ yes (instrumental) ───────► NEW path:
-       mix_wav_files(bass, other) → harmony.wav        [reused as-is, same call already made for key/tempo detection]
-       transcribe_audio_to_notes(harmony.wav) → notes  [reused as-is — no monophonic reduction, no voice cap: full polyphonic transcription]
-       notes_to_grand_staff(notes, title, beat_map) → score   [reused as-is — Spec 1's exact DP hand-split + assembly]
-       generate_variants(score) → {easy, medium, hard} [reused as-is — Spec 1's exact difficulty engine]
+mix.wav
+  └─ separate_stems() → vocals.wav, drums.wav, bass.wav, other.wav
+        ├─ extract_melody_notes(vocals.wav) → melody_notes   [unchanged call]
+        │
+        │   len(melody_notes) < MIN_MELODY_NOTES ?
+        │        │                           │
+        │       no (has vocals)             yes (instrumental)
+        │        │                           │
+        │   existing Spec 2 path        NEW instrumental path:
+        │   (vocals→RH, bass+          harmony_path = mix_wav_files(bass, other)  [already computed]
+        │    other→LH, as today)       notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=180ms)
+        │                              rh_notes, lh_notes = assign_hands(notes)        [Spec 1's DP split]
+        │                              rh_notes = cap_simultaneous_notes(rh_notes, 4)
+        │                              lh_notes = cap_simultaneous_notes(lh_notes, 4)
+        │                              rh_base = notes_to_part(rh_notes, "RH", ...)
+        │                              lh_base = shift_into_range(notes_to_part(lh_notes, "LH", ...), *HARD_LH_RANGE)
+        │                              (then existing _rh_variants/_lh_variants-shaped
+        │                               tier derivation: quantize_part + shift_into_range,
+        │                               same grids/ranges/voice caps as today)
+        └────────────────────────────────────────────────────┘
+                           ▼
+       build_grand_staff_score(rh_variant, lh_variant, key_signature=...) per tier — UNCHANGED
+                           ▼
+                MusicXML export × 3 — UNCHANGED
 ```
 
-Everything on the instrumental path is existing, already-tested Spec 1
-machinery. The only genuinely new code is the detection check and the
-routing branch in `run_arrange_pipeline` itself — no new note-processing
-logic, no new difficulty-derivation logic.
+Detection reuses the RH extraction Spec 2 already runs unconditionally
+today — no separate energy/silence detector. `extract_melody_notes`
+(Basic Pitch + `reduce_to_monophonic`) runs exactly as it does now; if the
+resulting note list is implausibly short for a full song
+(`len(melody_notes) < MIN_MELODY_NOTES`), that's treated as "no real
+vocal melody" and the pipeline takes the instrumental branch instead of
+building RH from those (near-empty or noise-artifact) notes. This
+correctly also catches noisy/bleed-only vocals stems, not just true
+silence, since the signal is "did a plausible melody come out," not "is
+there any energy at all."
 
-Key/tempo detection (`detect_key_and_tempo`, `detect_beat_map`) already
-runs on the same `harmony.wav` regardless of branch, so it's unaffected
-by this change — both branches can compute it identically, before or
-after the branch point.
-
-## Detection
-
-`is_instrumental(vocals_path: str) -> bool` in a new module,
-`app/arrange_pipeline.py`-adjacent (e.g. `app/vocals/detect.py`):
-measure the isolated vocals stem's RMS energy relative to the full
-pre-separation mix. Below a tuned threshold, classify as instrumental.
-
-RMS energy (not a Basic Pitch note-yield check) is the primary signal:
-it's a cheap numeric computation on the waveform, not a second ML model
-invocation, so a track that turns out to have vocals doesn't pay an
-extra Basic Pitch call just to be classified.
-
-This is a first-pass heuristic, not a solved classification problem.
-Known, accepted limitation: quiet/whispered vocals could be
-misclassified as instrumental, and a sparse/faint instrumental could in
-principle be misclassified as vocal. The threshold needs tuning against
-real audio (see Testing), and misclassification is a documented
-limitation to revisit if real listening surfaces it as an actual
-problem — not something this phase claims to fully solve.
+Key/tempo detection (`detect_key_and_tempo`, `detect_beat_map`) keeps
+running over the same `harmony_path` as today, unconditionally — the
+instrumental branch doesn't change this at all, since that mix was never
+vocals-derived in the first place.
 
 ## Components
-
-### `app/vocals/detect.py` (new)
-
-```python
-def is_instrumental(vocals_path: str, mix_path: str, threshold: float = VOCALS_ENERGY_THRESHOLD) -> bool:
-    """RMS energy of the isolated vocals stem, relative to the
-    pre-separation mix, below `threshold` classifies the track as
-    instrumental (no meaningful vocal content) — routes /arrange to the
-    Spec-1-reuse path instead of the vocals-as-RH path. A first-pass
-    heuristic (see design doc's Detection section on its known
-    false-positive/negative risk), not a definitive classifier."""
-```
-
-`VOCALS_ENERGY_THRESHOLD` starts as a tuning constant, expected to be
-adjusted by ear/measurement once real instrumental + vocal test audio is
-in hand (see Tuning below) — no principled starting value exists yet.
 
 ### `arrange_pipeline.py` (modified)
 
 ```python
-def run_arrange_pipeline(...):
-    ...
-    stems = separate_stems(audio_path, dest_dir / "stems")
-    harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
-    detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
-    beat_map = detect_beat_map(str(harmony_path))
-    key_signature = key_signature_from_tonic(*detected_key)
+MIN_MELODY_NOTES = 8  # tuning constant — a real sung melody in a full-length
+                       # song produces far more than this; expect to adjust
+                       # by ear/real-audio testing, same as this project's
+                       # other extraction thresholds.
 
-    if is_instrumental(str(stems.vocals), audio_path):
-        set_status(job_id, "arranging")
-        notes = transcribe_audio_to_notes(str(harmony_path))
-        if not notes:
-            raise ValueError("No pitched content detected")
-        score = notes_to_grand_staff(notes, title=title, beat_map=beat_map)
-        # notes_to_grand_staff doesn't take a key signature — apply it
-        # the same way Spec 1's /transcribe endpoint would need to if it
-        # used one; simplest: insert into rh/lh via get_hand_parts before
-        # generate_variants, mirroring build_grand_staff_score's existing
-        # key_signature parameter.
-        variants = generate_variants(score)
-        difficulties = {
-            tier: _export(variant, tier) for tier, variant in
-            (("easy", variants.easy), ("medium", variants.medium), ("hard", variants.hard))
-        }
-    else:
-        # existing vocals-as-RH path, unchanged
-        ...
+def _is_instrumental(melody_notes: list[NoteEvent]) -> bool:
+    return len(melody_notes) < MIN_MELODY_NOTES
+
+def _instrumental_variants(harmony_path: str, seconds_per_quarter: float, beat_map: BeatMap):
+    """RH/LH variants for a song with no real vocal melody: transcribe the
+    harmony mix directly (no vocals involved) and split it into hands via
+    Spec 1's continuity-aware DP (assign_hands), instead of Spec 2's usual
+    vocals-are-RH/bass+other-are-LH fixed roles. Mirrors _rh_variants/
+    _lh_variants' shape exactly so downstream tier derivation is identical."""
+    notes = transcribe_audio_to_notes(harmony_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
+    rh_notes, lh_notes = assign_hands(notes)
+    rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+    lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
+
+    rh_base = notes_to_part(rh_notes, part_id="RH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map)
+    lh_base = shift_into_range(
+        notes_to_part(lh_notes, part_id="LH", seconds_per_quarter=seconds_per_quarter, beat_map=beat_map),
+        *HARD_LH_RANGE,
+    )
+    rh_variants = {
+        "easy": shift_into_range(quantize_part(rh_base, EASY_GRID), *EASY_RH_RANGE),
+        "medium": shift_into_range(quantize_part(rh_base, MEDIUM_GRID), *MEDIUM_RH_RANGE),
+        "hard": rh_base,
+    }
+    lh_variants = {
+        "easy": shift_into_range(quantize_part(lh_base, EASY_GRID, max_voices=1), *EASY_LH_RANGE),
+        "medium": shift_into_range(quantize_part(lh_base, MEDIUM_GRID, max_voices=MAX_VOICING_TONES), *MEDIUM_LH_RANGE),
+        "hard": lh_base,
+    }
+    return rh_variants, lh_variants
 ```
 
-The exact key-signature wiring (`notes_to_grand_staff` doesn't accept
-one directly, unlike `build_grand_staff_score`) is an implementation
-detail for the plan/implementation phase, not a design-level decision —
-noted here so it isn't missed, not resolved here.
+`run_arrange_pipeline` calls `extract_melody_notes(stems.vocals)` exactly
+as today, then branches:
+
+```python
+melody_notes = extract_melody_notes(str(stems.vocals))
+if _is_instrumental(melody_notes):
+    rh_variants, lh_variants = _instrumental_variants(str(harmony_path), seconds_per_quarter, beat_map)
+else:
+    lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
+    rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
+```
+
+`harmony_path`/`detected_key`/`seconds_per_quarter`/`beat_map` are all
+computed once, before the branch, exactly as today — nothing about key
+or tempo detection changes.
+
+`HARD_MAX_VOICES` (from `app.lh.extract`) and
+`MAX_SIMULTANEOUS_VOICES_PER_HAND` (from `app.notation.hand_split`) are
+both already 4 — the instrumental branch reuses
+`MAX_SIMULTANEOUS_VOICES_PER_HAND` (Spec 1's constant, since it's
+capping DP-split hands, the same operation Spec 1 already does) rather
+than introducing a third identically-valued constant.
+
+**Why `notes_to_part` + manual tier derivation, not
+`notes_to_grand_staff` + `generate_variants` wholesale:** Spec 1's
+`generate_variants` (`to_easy`/`to_medium`/`to_hard`) rebuilds a fresh
+`Score` per tier via `build_grand_staff_score(rh, lh, title=...)` **without**
+forwarding `key_signature` — harmless for Spec 1 (which never detects a
+key), but would silently drop the key signature on this instrumental
+case's Easy/Medium tiers, since Spec 2 needs one on every tier. Building
+RH/LH `Part` variants directly (mirroring `_rh_variants`/`_lh_variants`'s
+existing shape) and letting the existing per-tier `build_grand_staff_score`
+call in `run_arrange_pipeline`'s main loop apply `key_signature` uniformly,
+exactly as it does for the non-instrumental path today, avoids that gap
+entirely rather than also patching `to_easy`/`to_medium` to accept and
+forward a key signature they've never needed before.
+
+### No new modules
+
+Everything reused here (`assign_hands`, `cap_simultaneous_notes`,
+`notes_to_part`, `transcribe_audio_to_notes`) already exists and is
+already imported by at least one of the two pipelines. This spec adds one
+new function (`_instrumental_variants`) and one new constant/predicate
+(`MIN_MELODY_NOTES`/`_is_instrumental`) to `arrange_pipeline.py`, and
+changes nothing in `app/notation/`, `app/melody/`, or `app/lh/`.
 
 ## Testing
 
-Matches this project's existing TDD + real-audio-verification norms:
+TDD as always. New coverage needed:
+- `_is_instrumental`: below/at/above `MIN_MELODY_NOTES` boundary.
+- `_instrumental_variants`: mocked `transcribe_audio_to_notes` output
+  correctly flows through `assign_hands` → cap → `notes_to_part` →
+  tier derivation; assert Easy/Medium grids and ranges match the same
+  constants `_rh_variants`/`_lh_variants` use (a regression contract, not
+  a new behavior).
+- `run_arrange_pipeline`'s branch: a near-empty vocals stem (mocked to
+  return `< MIN_MELODY_NOTES` notes) routes to `_instrumental_variants`
+  instead of `_rh_variants`/`_lh_variants`; a normal vocals stem is
+  unaffected (regression check that the existing pop/rock path is
+  untouched).
+- End-to-end `/arrange` flow with a mocked-instrumental input, confirming
+  all three tiers export and all carry the detected key signature.
 
-- `is_instrumental`: unit tests with synthetic near-silent vs. energetic
-  waveforms: clearly-instrumental and clearly-vocal cases pass at
-  whatever starting threshold is chosen; document that the boundary
-  itself is untested by unit tests (it can only be tuned against real
-  audio).
-- Routing logic in `run_arrange_pipeline`: unit test that each branch is
-  taken given a mocked `is_instrumental` return value, and that the
-  instrumental branch calls `transcribe_audio_to_notes` +
-  `notes_to_grand_staff` + `generate_variants` (not
-  `extract_melody_notes`/`_rh_variants`/`_lh_variants`).
-- No new tests needed for `assign_hands`, `notes_to_grand_staff`,
-  `generate_variants`, or `transcribe_audio_to_notes` themselves — all
-  reused unchanged, already covered by Spec 1's existing test suite.
-- Real-audio verification: add at least one genuinely instrumental track
-  to the local verification corpus (today's corpus is 1 solo piano + 3
-  full songs, all with vocals). Per this project's established practice,
-  scope the actual listening check to the **Hard tier only**. This
-  verification is where `VOCALS_ENERGY_THRESHOLD` gets tuned — there is
-  no way to pick a real starting value without it.
+Real-audio verification is mandatory before calling this done, same as
+every other pipeline-quality change in this project — specifically, at
+least one genuinely instrumental real song (no vocals at all) run
+end-to-end and listened to, both to confirm `MIN_MELODY_NOTES` doesn't
+misfire on the *existing* 3-song pop/rock corpus (which must still take
+the normal path unchanged) and to judge whether the DP-split RH/LH
+actually sounds like a reasonable two-hand arrangement rather than just
+"technically not empty."
 
 ## Tuning parameters to expect adjusting by ear
 
-- `VOCALS_ENERGY_THRESHOLD` — no principled starting value; set from the
-  first real instrumental-track verification pass.
-- `MAX_SIMULTANEOUS_VOICES_PER_HAND` (from `hand_split.py`, already `4`)
-  — reused as-is, but instrumental audio's spectral content differs from
-  solo piano; may need its own value if listening surfaces over/under
-  capping specific to this new input type.
+- `MIN_MELODY_NOTES` (starting at 8) — the one genuinely new tunable
+  this spec introduces; real instrumental and real pop/rock songs need to
+  be tested side by side to confirm it doesn't misclassify either
+  direction.
+- Everything else (`HARD_MAX_VOICES`/`MAX_SIMULTANEOUS_VOICES_PER_HAND`,
+  the difficulty grids/ranges) is inherited, already-tuned, unchanged.
 
-## Open risks
+## Open risk
 
-- **Detection is a heuristic, not a classifier.** See Detection section
-  above — false positives/negatives are expected and accepted for this
-  phase, to be revisited only if real listening surfaces them as an
-  actual problem.
-- **No lead-instrument protection.** Unlike the vocals-as-RH path, which
-  guarantees a sung melody becomes RH, the DP hand-split has no concept
-  of "this is the lead line, protect it" — it splits by physical
-  hand-span/continuity only. An instrumental with one clear lead
-  instrument (a guitar hook, a synth lead) may have that line correctly
-  land in RH by the DP's own continuity logic, or may not, depending on
-  the piece's texture. This phase does not add lead-instrument detection
-  — it's an open question for a later phase if listening shows the DP's
-  generic split under-serves the common "one obvious lead instrument"
-  case specifically.
-- **Basic Pitch on non-piano instrumental audio is unvalidated.** Basic
-  Pitch already runs on Demucs's "other"/bass stems today for Spec 2's
-  LH, so this isn't a wholly new risk — but running it as the *sole*
-  transcription source for a full instrumental arrangement (not just
-  accompaniment) is higher-stakes than before, and hasn't been
-  specifically evaluated. Real-audio verification against a genuine
-  instrumental track is where this gets checked, not before.
+`assign_hands`'s tunable constants are, by its own module docstring,
+"hand-tuned against a handful of synthetic stress cases plus one real
+~350-note transcribed **piano** clip" — this spec is the first time that
+DP split runs on Basic Pitch output from a **non-piano, multi-instrument**
+harmony mix (guitar/synth/strings/whatever Demucs's "other" stem contains)
+rather than a real solo piano transcription. The physical hand-span and
+continuity assumptions it encodes are piano-specific; whether they still
+produce a sensible split when the input notes come from an ensemble mix
+rather than one instrument played by two literal hands is unvalidated
+and is exactly the kind of question real-audio listening verification
+(above) needs to answer, not just unit tests.

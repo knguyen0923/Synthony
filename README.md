@@ -154,8 +154,18 @@ pytest
 ```
 
 All external network calls (yt-dlp, Spotify API) are mocked in the test
-suite. There is no automated frontend test suite for v1 — frontend
-correctness is verified manually in a browser.
+suite.
+
+```bash
+cd frontend
+npm test
+```
+
+Covers the pure `classifyLink`/`extractErrorMessage` helpers, the
+`UploadForm`/`DifficultyTabs`/`InputScreen` component logic, and the
+`/arrange` job-polling flow (axios and timers mocked). `ScoreViewer`'s
+OpenSheetMusicDisplay rendering and `QrScanButton`'s camera access aren't
+covered by automated tests — both stay manually verified in a browser.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the backend suite and a
 frontend build/lint check on every push to `main` and on pull requests.
