@@ -3,7 +3,8 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+import yt_dlp
+from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOauthError
 
 from app.ingestion.youtube import download_audio, YouTubeResolutionError, YouTubeDurationExceededError
 
@@ -30,11 +31,11 @@ def resolve_and_download(
         raise SpotifyResolutionError(f"Could not parse Spotify track URL: {spotify_url}")
     track_id = match.group(1)
 
-    auth_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
-    client = spotipy.Spotify(auth_manager=auth_manager)
     try:
+        auth_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
+        client = spotipy.Spotify(auth_manager=auth_manager)
         track = client.track(track_id)
-    except spotipy.SpotifyException as exc:
+    except (spotipy.SpotifyException, SpotifyOauthError) as exc:
         raise SpotifyResolutionError(f"Could not resolve Spotify track: {spotify_url}") from exc
 
     title = track["name"]
@@ -58,12 +59,14 @@ def resolve_and_download(
 
 
 def _search_youtube(query: str) -> Optional[str]:
-    import yt_dlp
-
     options = {"quiet": True, "default_search": "ytsearch1", "noplaylist": True}
-    with yt_dlp.YoutubeDL(options) as ydl:
-        result = ydl.extract_info(query, download=False)
-        entries = result.get("entries") or []
-        if not entries:
-            return None
-        return entries[0]["webpage_url"]
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            result = ydl.extract_info(query, download=False)
+    except yt_dlp.utils.DownloadError as exc:
+        raise SpotifyResolutionError(f"Could not search YouTube for: {query}") from exc
+
+    entries = (result or {}).get("entries") or []
+    if not entries:
+        return None
+    return entries[0]["webpage_url"]

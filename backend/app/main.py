@@ -114,7 +114,13 @@ async def _ingest_and_validate_duration(
         except IngestionError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    duration = librosa.get_duration(path=str(ingested.path))
+    try:
+        duration = librosa.get_duration(path=str(ingested.path))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not read audio file — it may be corrupt or an unsupported format",
+        ) from exc
     if duration > MAX_DURATION_SECONDS:
         raise HTTPException(status_code=413, detail="Audio exceeds the 10-minute duration cap")
 
@@ -157,9 +163,10 @@ async def transcribe(
     spotify_url: Optional[str] = Form(None),
 ) -> TranscribeResponse:
     song_id = new_song_id()
-    dest_dir = song_dir(song_id)
+    dest_dir: Optional[Path] = None
 
     try:
+        dest_dir = song_dir(song_id)
         ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
 
         title = ingested.title
@@ -193,7 +200,8 @@ async def transcribe(
         # Expected control flow (bad/no input, duration cap, no pitched
         # content) — cleanup happens the same as any other failure, but
         # this isn't a bug, so it doesn't get an ERROR-level stack trace.
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if dest_dir is not None:
+            shutil.rmtree(dest_dir, ignore_errors=True)
         raise
     except Exception:
         # song_dir() already created dest_dir before any of the above ran;
@@ -202,7 +210,8 @@ async def transcribe(
         # directory — or, for YouTube input, an orphan downloaded audio
         # file — behind under STORAGE_ROOT.
         logger.exception("transcribe failed for song_id=%s", song_id)
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if dest_dir is not None:
+            shutil.rmtree(dest_dir, ignore_errors=True)
         raise
 
     return TranscribeResponse(
@@ -220,12 +229,14 @@ async def arrange(
     spotify_url: Optional[str] = Form(None),
 ) -> ArrangeSubmitResponse:
     song_id = new_song_id()
-    dest_dir = song_dir(song_id)
+    dest_dir: Optional[Path] = None
 
     try:
+        dest_dir = song_dir(song_id)
         ingested = await _ingest_and_validate_duration(dest_dir, audio_file, youtube_url, spotify_url)
     except Exception:
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if dest_dir is not None:
+            shutil.rmtree(dest_dir, ignore_errors=True)
         raise
 
     job_id = create_job()

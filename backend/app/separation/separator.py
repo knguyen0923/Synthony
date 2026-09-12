@@ -13,11 +13,15 @@ def separate_stems(audio_path: str, output_dir: Path) -> Stems:
     bass/other WAV files under output_dir, and return their paths."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(
-        [sys.executable, "-m", "demucs.separate", "-n", MODEL_NAME, "-o", str(output_dir), audio_path],
-        check=True,
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "demucs.separate", "-n", MODEL_NAME, "-o", str(output_dir), audio_path],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else "(no stderr captured)"
+        raise RuntimeError(f"Demucs stem separation failed: {stderr}") from exc
 
     track_name = Path(audio_path).stem
     stem_dir = output_dir / MODEL_NAME / track_name

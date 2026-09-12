@@ -1,5 +1,6 @@
 import pytest
 import spotipy
+import yt_dlp
 
 from app.ingestion import spotify as spotify_module
 from app.ingestion.spotify import resolve_and_download, SpotifyResolutionError, SpotifyDurationExceededError
@@ -121,3 +122,49 @@ def test_resolve_and_download_threads_max_duration_seconds_to_youtube(tmp_path, 
     )
 
     assert captured["max_duration_seconds"] == 600
+
+
+def test_resolve_and_download_wraps_oauth_errors_as_resolution_errors(monkeypatch, tmp_path):
+    """Confirmed by direct execution: SpotifyClientCredentials(...) raises
+    SpotifyOauthError when client_id/client_secret are unset (the default,
+    unconfigured state) -- SpotifyOauthError is NOT a subclass of
+    spotipy.SpotifyException, so the pre-existing try/except (which only
+    caught SpotifyException around client.track()) never caught it, and it
+    propagated as a raw, unhandled exception."""
+    def _raise_oauth_error(**kwargs):
+        raise spotipy.oauth2.SpotifyOauthError("no client credentials set")
+
+    monkeypatch.setattr(spotify_module, "SpotifyClientCredentials", _raise_oauth_error)
+
+    with pytest.raises(SpotifyResolutionError):
+        resolve_and_download(
+            "https://open.spotify.com/track/abc123",
+            tmp_path,
+            "",
+            "",
+        )
+
+
+def test_search_youtube_wraps_download_errors_as_resolution_errors(monkeypatch):
+    """_search_youtube's yt_dlp.YoutubeDL(...).extract_info(...) call had no
+    try/except anywhere in its call chain, unlike the structurally identical
+    call in download_audio three lines below it."""
+    from app.ingestion.spotify import _search_youtube
+
+    class _FailingYoutubeDL:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def extract_info(self, *args, **kwargs):
+            raise spotify_module.yt_dlp.utils.DownloadError("network error")
+
+    monkeypatch.setattr(spotify_module.yt_dlp, "YoutubeDL", _FailingYoutubeDL)
+
+    with pytest.raises(SpotifyResolutionError):
+        _search_youtube("some query")

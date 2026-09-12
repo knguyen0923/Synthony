@@ -548,3 +548,16 @@ def test_arrange_job_failure_logs_the_exception(monkeypatch, caplog, synthetic_p
 def test_arrange_status_returns_404_for_unknown_job():
     response = client.get("/arrange/does-not-exist")
     assert response.status_code == 404
+
+
+def test_transcribe_rejects_non_audio_upload_with_a_clean_422():
+    """Confirmed by direct execution: a text file renamed .mp3 passes
+    upload.py's extension-only validation, then librosa.get_duration raises
+    audioread.exceptions.NoBackendError -- previously uncaught (outside the
+    try/except IngestionError block in _ingest_and_validate_duration),
+    surfacing as a raw 500 instead of a clean 4xx."""
+    response = client.post(
+        "/transcribe",
+        files={"audio_file": ("fake.mp3", b"this is not audio data, just text bytes", "audio/mpeg")},
+    )
+    assert response.status_code == 422
