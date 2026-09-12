@@ -388,3 +388,18 @@ def test_instrumental_variants_raises_when_no_harmonic_content_detected(monkeypa
 
     with pytest.raises(ValueError, match="No harmonic content detected"):
         pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+
+def test_instrumental_variants_logs_a_warning_when_one_hand_is_empty(monkeypatch, caplog):
+    import logging
+    import app.arrange_pipeline as pipeline_module
+
+    other_notes = [NoteEvent(start=0.0, end=1.0, pitch=60, velocity=0.5)]
+    monkeypatch.setattr(
+        pipeline_module, "transcribe_audio_to_notes", _fake_transcribe_by_path([], other_notes)
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.arrange_pipeline"):
+        pipeline_module._instrumental_variants("fake/bass.wav", "fake/other.wav", 0.5)
+
+    assert any("bass" in record.message.lower() and "empty" in record.message.lower() for record in caplog.records)

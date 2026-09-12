@@ -123,6 +123,10 @@ def _instrumental_variants(
     lh_notes = transcribe_audio_to_notes(bass_path, minimum_note_length=LH_MINIMUM_NOTE_LENGTH_MS)
     if not rh_notes and not lh_notes:
         raise ValueError("No harmonic content detected")
+    if not rh_notes:
+        logger.warning("instrumental arrange: other-stem transcription produced zero notes -- RH will be empty")
+    if not lh_notes:
+        logger.warning("instrumental arrange: bass-stem transcription produced zero notes -- LH will be empty")
     rh_notes = cap_simultaneous_notes(rh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
     lh_notes = cap_simultaneous_notes(lh_notes, MAX_SIMULTANEOUS_VOICES_PER_HAND)
 
