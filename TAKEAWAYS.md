@@ -3,10 +3,11 @@
 A retrospective on building Synthony: an app that turns audio — a file
 upload, a YouTube link, a Spotify link, or a QR-scanned link — into
 practice-ready piano sheet music at three difficulty tiers. Built solo,
-2026-08-31 to 2026-09-12 (160 commits, 6 active build days), from empty
+2026-08-31 to 2026-09-12 (167 commits, 6 active build days), from empty
 repo to two working end-to-end transcription pipelines, a real-audio
 verification harness, CI, structured logging, a concurrency guardrail, a
-Docker local-run story, and a discovery-sweep bug-fix pass on top.
+Docker local-run story, a discovery-sweep bug-fix pass, and a
+production-readiness pass on top.
 
 ## What it does
 
@@ -248,11 +249,12 @@ wouldn't have:
 
 ## By the numbers
 
-- **160 commits**, empty repo to two complete pipelines plus a hardening
-  pass and a discovery-sweep bug-fix pass, across 6 active build days
-  spanning 2026-08-31 to 2026-09-12
-- **267 automated backend tests** (plus a separate frontend Vitest suite),
-  3,801 lines of backend test code vs. 2,417 lines of backend source
+- **167 commits**, empty repo to two complete pipelines plus a hardening
+  pass, a discovery-sweep bug-fix pass, a production-readiness pass, and a
+  follow-up event-loop-blocking fix, across 6 active build days spanning
+  2026-08-31 to 2026-09-12
+- **269 automated backend tests** (plus a separate frontend Vitest suite),
+  4,131 lines of backend test code vs. 2,494 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
   accident)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
@@ -293,12 +295,23 @@ top of that caught a handful of doc-staleness and robustness findings
 (this file's own stale counts among them) — fixed in one final wave
 rather than left for a second round.
 
-- **`/transcribe` still blocks the event loop** while it runs its full ML
-  pipeline synchronously — pre-existing, not introduced by the hardening
-  pass, and left alone deliberately at personal-project scale. Worth
-  revisiting only if `/transcribe` ever needs to handle truly concurrent
-  requests (today, two `/transcribe` calls can never contend for the new
-  concurrency guardrail's job slots — they can't even both start).
+- **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
+  the CPU-bound half (transcription, notation, export) now runs via
+  `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable
+  for the first time (a second `/transcribe` couldn't even get scheduled
+  before). Caught its own plan defect along the way: the first version of
+  the regression test reused this test file's shared, non-context-managed
+  `TestClient`, which turned out to never share one event-loop portal
+  across requests — it would have passed even against the broken code.
+  Verified empirically (in a throwaway worktree, both by the implementer
+  and independently by the final reviewer) that the corrected test fails
+  without the fix and passes with it, before trusting it.
+- **Still open**: the *ingestion* step (YouTube/Spotify download via
+  yt-dlp, `librosa.get_duration`) still blocks the event loop the same
+  way the pipeline itself used to, for both `/transcribe` and `/arrange`.
+  Same fix shape (`run_in_threadpool`) — caught by the fix above's own
+  final review, deliberately scoped out as a follow-up rather than
+  expanding an already-approved merge.
 - **Broadening past pop/rock** — instrumentals, rap, orchestral, and
   multi-melody songs are explicitly out of scope for the current
   arrangement engine, deferred on purpose until the pop/rock case was
