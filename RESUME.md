@@ -1,117 +1,125 @@
 # Resuming Synthony
 
-Updated 2026-09-12 (later session). The `assign_hands` non-piano follow-up
-flagged at the end of the last session is now resolved — via a mid-course
-pivot, not the fix originally planned. Instrumental arrangement work is
-**shelved** after this; focus is moving to piano transcription quality and
-a production-readiness/bug-fix/polish pass. This is where things stand.
+Updated 2026-09-12 (later session). Two full passes have landed on local
+`main` since the last update (not pushed to `origin/main` — hold until
+explicitly asked): a production-readiness pass, then a follow-up batch
+fixing `/transcribe`'s event-loop blocking. Currently mid-investigation
+on the shelved instrumental-arrangement backlog (Big Rock's tempo
+complaint) — see "In progress" below for exactly where that's paused.
 
-## assign_hands multi-instrument follow-up — resolved, merged locally, not yet pushed
+## Done and merged since the last update
 
-Merged to local `main` (fast-forward, 7 commits, tests green: 252/252).
-**Not pushed to `origin/main` yet** — hold on that until explicitly asked.
+- **Production-readiness pass** (`docs/superpowers/specs/2026-09-12-production-readiness-pass-design.md`,
+  `docs/superpowers/plans/2026-09-12-production-readiness-pass.md`): Demucs
+  stem-directory cleanup (going-forward + a one-time sweep of ~2.6GB of
+  pre-existing dead stems), `/health` reporting ffmpeg/piano-model status
+  plus a startup warning, rotating file logging with a safe fallback, and
+  `backend/setup.sh`. Final whole-branch review found 4 Important + 9
+  Minor findings; 7 fixed in one wave, rest parked with rulings (see the
+  plan's own ledger notes in its commit history).
+- **`/transcribe` event-loop fix + small backlog batch**
+  (`docs/superpowers/plans/2026-09-12-backlog-and-transcribe-fix.md`):
+  `/transcribe`'s CPU-bound pipeline now runs via `run_in_threadpool`
+  instead of blocking the event loop — `MAX_CONCURRENT_JOBS` is reachable
+  for the first time. Caught its own plan defect mid-flight: the first
+  version of the regression test reused this test file's shared,
+  non-context-managed `TestClient`, which never shares one event-loop
+  portal across requests and would have passed even against the broken
+  code — verified empirically (both by the implementer and the final
+  reviewer, in a throwaway worktree) before trusting the fix. Also fixed:
+  a missing failure-path test, log-dir test isolation, a logger-restore
+  fixture, `setup.sh --clear`, and a `HealthResponse` Pydantic model.
+- **Docs cleanup**: deleted 5 plan files whose entire deliverable code no
+  longer exists (the chord-symbol-driven `app/arrangement/` package and
+  its chord-recognition/dynamics/key-awareness plans — all retired by the
+  2026-09-02 LH-true-transcription rewrite). No specs deleted — every doc
+  in `docs/superpowers/specs/` still has at least some currently-accurate
+  content per its own internal notes.
+- `CLAUDE.md` added: session operating rules (max 3 concurrent agents,
+  avoid ~100k+ token single tasks, pause-and-update-this-file at 90%
+  session usage, ~400-line file-size guideline, keep README/TAKEAWAYS
+  current).
+- `README.md`/`TAKEAWAYS.md` both refreshed to current state (commit/test
+  counts, a README Status section, TAKEAWAYS lessons from both passes
+  above) — modeled after an example project (PikaRAG) the user shared as
+  a format/quality-bar reference.
 
-What happened, in order:
+## In progress: Big Rock tempo investigation (spike, not yet a plan)
 
-1. **Task 1–2:** Fixed `assign_hands`'s real bug — it forced every "lone
-   note" onset unconditionally to RH, correct for solo piano but wrong for
-   multi-instrument input. Fix: once *both* hands already have an
-   established pitch centroid, let a lone note flow through the existing
-   DP cost-scoring instead of the hard bypass; keep the original bypass
-   for cold start. This fix is real and independently verified (Moonlight
-   Sonata sounded correct after) — it stands on its own for Spec 1's
-   solo-piano path (`hand_split.py`), regardless of what happened next.
-2. **Task 4 (real-audio verification):** objectively fixed the RH/LH count
-   imbalance (rock instrumental hard tier: 1169/29 → 670/540). But by-ear
-   listening found it "sounds incoherent/scattered" despite the balanced
-   counts.
-3. **Investigation:** confirmed the flicker is structural, not a tuning
-   gap — swept `SWITCH_PENALTY` against the real note stream and found
-   balance and flicker are in direct opposition (a value strong enough to
-   suppress flicker just recreates the original bug).
-4. **Pivot (Task 5):** `_instrumental_variants` now transcribes the
-   `bass` and `other` Demucs stems **separately** (bass→LH, other→RH)
-   instead of mixing them and re-splitting by pitch continuity —
-   eliminates the flicker structurally, since each hand is one
-   continuously-transcribed real source. Confirmed better by ear against
-   the actual shipped code (not just a prototype).
+User asked to work through the shelved-instrumental backlog in order:
+Big Rock's tempo complaint → the broader instrumental-quality revisit →
+broadening past pop/rock. This is the first of those three, currently
+paused mid-investigation, not yet a plan.
 
-**Known, accepted trade-off, not resolved:** the "other" stem's pitch
-range can dip below the bass stem's clamped LH range on the Hard tier, so
-RH can occasionally sit lower than LH — a hand-crossing the old DP
-approach specifically avoided. User heard both and preferred stem-split
-anyway. Listed in the plan's Deferred section if this needs picking up
-again.
+**Confirmed by direct execution** (ran the real production code path
+against the real audio — real Demucs stems, real bass+other mix, real
+tempo detection, real instrumental-variant construction — not just read
+the code): **no arrangement Synthony has ever exported carries a tempo
+marking.** Checked directly on Big Rock's real Hard-tier score:
+`score.flatten().getElementsByClass('MetronomeMark')` returns zero
+matches. This is a genuine, universal gap — playback speed is entirely
+up to whatever default the importing software assumes, decoupled from
+whatever tempo was actually detected. For Big Rock specifically, the
+math says a standard 120 BPM MIDI default would render it ~11% *faster*
+than the source (206s vs. 231s), not slower — so this bug is real but
+doesn't cleanly explain the "too slow" complaint's direction by itself.
 
-Spec: `docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`
-(includes the full pivot evidence). Plan: `docs/superpowers/plans/2026-09-12-hand-split-instrumental-fix.md`.
-Executed via `superpowers:subagent-driven-development`; final whole-branch
-review found 2 Important + 5 Minor stale-documentation issues (all from
-the pivot leaving old comments/log lines/docstrings behind), fixed in one
-pass, re-reviewed clean. SDD workspace already deleted.
+**Open, unconfirmed hypothesis:** two independent tempo-detection
+algorithms (madmom, librosa) agree tightly at ~107-110 BPM for Big Rock,
+on both the full mix and the real bass+other stem mix the pipeline
+actually uses. Tight agreement is not proof of correctness here — both
+algorithms share the same onset-strength-autocorrelation approach, and a
+"half-time" reading of a driving rock backbeat (true tempo ~215-220 BPM)
+is one of the most common shared failure modes in tempo detection. This
+would make every note render at double the note-value it should, which
+reads/feels sluggish independent of the metronome-mark bug's math. Can't
+confirm or rule out without listening — no audio playback available in
+this session's environment.
 
-## Instrumental arrangement — shelved, explicit user decision
+**Next step, waiting on the user:** offered to render both tempo
+versions (detected vs. doubled) of Big Rock's arrangement for a by-ear
+comparison, or to just fix the confirmed no-tempo-marking bug first and
+revisit the octave-error question only if that turns out not to be the
+whole story. User has not yet answered which they want.
 
-After hearing the fixed output, the user's own words: "i dont know how i
-feel overall with the arrange instrumental yet." Explicit decision: finish
-and merge the `assign_hands`/hand-split fix (done, above), then **stop
-investing further in arrange-instrumental quality** for now — it's an open
-question to revisit later, not a blocker on anything else. Don't
-resume work on this feature without the user raising it again.
+Probe artifacts (real Demucs stems, harmony mix, exported test
+MusicXML) are in `/tmp/bigrock_probe/` — outside the repo, scratch/
+throwaway, not committed, safe to regenerate or delete.
 
-Additional data point for that future revisit: user also felt **Big
-Rock's tempo sounds too slow** in the arrangement output. Not investigated
-— explicitly logged rather than acted on, since it's the same shelved
-feature.
+## Next up after Big Rock resolves
 
-## Next up (as of this session's end): production readiness + bug fix/polish
+- **Instrumental-arrangement-quality revisit** — the broader shelved
+  feature Big Rock is one data point for. User explicitly said "I don't
+  know how I feel about it yet" after the stem-split fix; stopped
+  investing further until raised again. Now being raised again, in the
+  order above.
+- **Broadening past pop/rock** — instrumentals, rap, orchestral, and
+  multi-melody songs, entirely out of scope for the current arrangement
+  engine. Its own brainstorm-and-spec cycle, planned last.
+- Explicitly **not** being pursued unless something above surfaces a
+  reason to: distinguishing multiple simultaneous instruments within
+  Demucs's catch-all "other" stem (no known fix), further LH
+  onset-cleanup (nothing currently prompting it).
 
-- User flagged **"the tempo is so slow"** on **Big Rock** (the shelved
-  instrumental track above, not a piano transcription as first assumed).
-  Explicit decision: log it here, don't investigate now — it's another
-  data point for whenever arrange-instrumental gets revisited, not a
-  separate active thread.
-- User asked for a plan to get this project **"ready for production"**
-  (their words: "even though this is a personal project") plus a
-  **bug-fix-and-polish pass** on the codebase. Not yet scoped — needs a
-  proper brainstorm (what "production ready" means here: deployment
-  target, who else might use it, security/auth expectations, uptime
-  expectations, etc.) before turning into a plan. This is the actual next
-  work thread.
+## Optional, lower priority (carried forward, unchanged)
 
-## Everything else from before — status
-
-All previously-listed items (CI, docker-compose env-shadowing, native
-arm64 Docker builds, frontend Vitest suite) are done and pushed — see git
-history / `TAKEAWAYS.md` for detail.
-
-**Still not done:** wiring `npm test` into `.github/workflows/ci.yml` (CI
-currently only runs frontend build/lint) — small, deliberately left for an
-explicit decision since it's a shared CI-pipeline file. This is a natural
-candidate for the production-readiness pass above.
-
-## Optional, lower priority (unchanged from before)
-
-- `/transcribe` still runs its full ML pipeline synchronously on the
-  event loop — worth revisiting only if `/transcribe` needs genuine
-  concurrent-request handling someday.
-- A handful of Minor findings from past reviews were deliberately left as
-  cosmetic/low-risk, not bugs — durable record is each work's design spec,
-  not repeated here.
-- Two long-standing, deliberately-parked items: distinguishing multiple
-  simultaneous instruments within Demucs's catch-all "other" stem, and
-  further LH onset-cleanup work (on hold unless listening surfaces it as
-  a problem).
+- `/transcribe`'s *ingestion* step (YouTube/Spotify download, duration
+  check) still blocks the event loop the same way the pipeline itself
+  used to — caught by the fix above's own final review, deliberately
+  scoped out as its own follow-up (same `run_in_threadpool` shape) rather
+  than expanding an already-approved merge.
+- A handful of Minor findings parked across both passes above (see each
+  plan's commit history for exact rulings) — none load-bearing, all
+  independently actionable later.
 
 ## Where to look for more context
 
-- `TAKEAWAYS.md` — the full retrospective from the production-hardening
-  pass.
+- `TAKEAWAYS.md` — full project retrospective, kept current.
+- `docs/superpowers/specs/2026-09-12-production-readiness-pass-design.md`
+  + `docs/superpowers/plans/2026-09-12-production-readiness-pass.md` —
+  the production-readiness pass.
+- `docs/superpowers/plans/2026-09-12-backlog-and-transcribe-fix.md` — the
+  `/transcribe` fix + small backlog batch (no separate spec; brief
+  in-chat design instead, per its own header).
 - `docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`
-  and `docs/superpowers/plans/2026-09-12-hand-split-instrumental-fix.md` —
-  this session's fix, spec and plan, both updated with the pivot's
-  real-audio evidence.
-- `docs/superpowers/specs/2026-09-12-instrumental-arrangement-design.md`
-  and `docs/superpowers/plans/2026-09-12-instrumental-arrangement.md` —
-  Track 3 Phase 1's original spec and plan (the work that surfaced the
-  `assign_hands` bug this session fixed).
+  — the stem-split pivot Big Rock's investigation builds on.
