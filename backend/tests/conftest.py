@@ -36,6 +36,13 @@ _TEST_LOG_DIR = Path(tempfile.mkdtemp(prefix="synthony-test-logs-"))
 logging_config_module.LOG_DIR = _TEST_LOG_DIR
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_test_temp_dirs():
+    yield
+    shutil.rmtree(_TEST_STORAGE_ROOT, ignore_errors=True)
+    shutil.rmtree(_TEST_LOG_DIR, ignore_errors=True)
+
+
 @pytest.fixture
 def synthetic_piano_wav(tmp_path):
     """A short synthetic WAV: a single held A4 (440Hz) tone, 2 seconds."""

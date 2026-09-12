@@ -272,6 +272,7 @@ def test_run_arrange_pipeline_deletes_the_whole_dest_dir_on_failure(tmp_path, mo
     )
 
     assert get_job(job_id).status == "failed"
+    assert get_job(job_id).detail == "Arrangement failed -- check the server logs for details"
     assert not tmp_path.exists()
 
 

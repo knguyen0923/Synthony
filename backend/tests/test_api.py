@@ -100,18 +100,22 @@ def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monk
     here is never entered that way, so each of its calls gets its own
     fresh, isolated portal and could never actually contend for one
     shared event loop the way two requests to a real running server
-    would. This starts a slow /transcribe in a background thread and
-    confirms /health -- issued through the SAME client instance -- still
-    responds promptly while it's still "running" (the mocked
-    transcription blocks on a threading.Event for up to 5s)."""
+    would. This starts a slow /transcribe in a background thread, waits
+    for a threading.Event to confirm the mocked, blocking call has
+    actually been entered (rather than guessing at a sleep duration),
+    and then confirms /health -- issued through the SAME client instance
+    -- still responds promptly while it's still "running" (the mocked
+    transcription blocks on a second threading.Event for up to 5s)."""
     import threading
     import time
     import app.main as main_module
     from app.transcription.audio_to_midi import PianoTranscriptionResult
 
+    entered = threading.Event()
     release = threading.Event()
 
     def _slow_then_empty(audio_path):
+        entered.set()
         release.wait(timeout=5.0)
         return PianoTranscriptionResult(notes=[], pedal_events=[])
 
@@ -124,7 +128,7 @@ def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monk
 
         thread = threading.Thread(target=_make_slow_transcribe_request)
         thread.start()
-        time.sleep(0.3)  # let the request actually reach the mocked, blocking call
+        assert entered.wait(timeout=5.0), "the mocked transcription call was never reached"
 
         start = time.monotonic()
         health_response = shared_client.get("/health")
