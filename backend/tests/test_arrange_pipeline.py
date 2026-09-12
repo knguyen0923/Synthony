@@ -243,6 +243,38 @@ def test_run_arrange_pipeline_deletes_the_stems_directory_after_success(tmp_path
     assert (tmp_path / "hard.musicxml").exists()
 
 
+def test_run_arrange_pipeline_deletes_the_whole_dest_dir_on_failure(tmp_path, monkeypatch):
+    """Mirrors the success-path stems-cleanup test above: run_arrange_
+    pipeline's except blocks already delete the ENTIRE dest_dir (not just
+    stems/) on any failure -- this was previously unguarded by a test, so
+    a future refactor could silently drop it without anything catching
+    the regression."""
+    import app.arrange_pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=tmp_path / "stems" / "vocals.wav", drums=tmp_path / "stems" / "drums.wav",
+            bass=tmp_path / "stems" / "bass.wav", other=tmp_path / "stems" / "other.wav",
+        ),
+    )
+
+    def _boom(audio_path):
+        raise RuntimeError("simulated pipeline failure")
+
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", _boom)
+
+    job_id = create_job()
+    run_arrange_pipeline(
+        job_id=job_id, audio_path="fake.wav", title="Song",
+        source_type="upload", source_url=None, song_id="fake-song-id",
+        dest_dir=tmp_path,
+    )
+
+    assert get_job(job_id).status == "failed"
+    assert not tmp_path.exists()
+
+
 def test_is_instrumental_true_when_below_the_note_count_floor():
     assert _is_instrumental([]) is True
     # 1 note -- below MIN_MELODY_NOTES_FOR_DENSITY_CHECK, can't compute density.
