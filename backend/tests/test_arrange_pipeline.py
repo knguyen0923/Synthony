@@ -99,7 +99,8 @@ def test_run_arrange_pipeline_waits_for_a_job_slot(tmp_path, monkeypatch):
     # job_slot() actually acquires. Patch the real one.
     monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
 
-    fake_notes = [NoteEvent(start=0.0, end=0.5, pitch=72)]
+    # At/above MIN_MELODY_NOTES so this exercises the normal (non-instrumental) path.
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(MIN_MELODY_NOTES)]
     fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
     monkeypatch.setattr(
         pipeline_module, "separate_stems",

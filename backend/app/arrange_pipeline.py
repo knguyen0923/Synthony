@@ -153,8 +153,12 @@ def run_arrange_pipeline(
             beat_map = detect_beat_map(str(harmony_path))
 
             set_status(job_id, "arranging")
-            lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
-            rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
+            if _is_instrumental(melody_notes):
+                logger.info("job %s: no real vocal melody detected, using DP hand-split", job_id)
+                rh_variants, lh_variants = _instrumental_variants(str(harmony_path), seconds_per_quarter, beat_map)
+            else:
+                lh_variants = _lh_variants(str(harmony_path), seconds_per_quarter, beat_map)
+                rh_variants = _rh_variants(melody_notes, seconds_per_quarter, beat_map)
 
             difficulties = {}
             key_signature = key_signature_from_tonic(*detected_key)

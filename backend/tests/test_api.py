@@ -343,6 +343,8 @@ def test_transcribe_with_path_traversal_filename_stays_within_temp_dir(monkeypat
 
 import time
 
+from music21 import note, stream
+
 from app.notation.types import NoteEvent
 from app.separation.types import Stems
 from app.tempo.detect import BeatMap
@@ -351,7 +353,8 @@ from app.tempo.detect import BeatMap
 def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch, synthetic_piano_wav):
     import app.arrange_pipeline as pipeline_module
 
-    fake_notes = [NoteEvent(start=0.0, end=0.5, pitch=72)]
+    # At/above MIN_MELODY_NOTES so this exercises the normal (non-instrumental) path.
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(pipeline_module.MIN_MELODY_NOTES)]
     fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
 
     monkeypatch.setattr(
@@ -394,6 +397,99 @@ def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch
     song_id = result["song_id"]
     for tier in ("easy", "medium", "hard"):
         assert (STORAGE_ROOT / song_id / f"{tier}.musicxml").exists()
+
+
+def test_arrange_routes_to_instrumental_path_when_no_real_melody_detected(monkeypatch, synthetic_piano_wav):
+    import app.arrange_pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=Path("/fake/vocals.wav"), drums=Path("/fake/drums.wav"),
+            bass=Path("/fake/bass.wav"), other=Path("/fake/other.wav"),
+        ),
+    )
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    # Fewer than MIN_MELODY_NOTES -- must route to _instrumental_variants.
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: [NoteEvent(start=0.0, end=0.5, pitch=60)])
+    monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
+    monkeypatch.setattr(pipeline_module, "detect_beat_map", lambda audio_path: BeatMap.constant(0.5))
+
+    instrumental_called = {}
+
+    def fake_instrumental_variants(harmony_path, seconds_per_quarter, beat_map=None):
+        instrumental_called["called"] = True
+        rh_part = stream.Part(id="RH")
+        rh_part.insert(0.0, note.Note("C4"))
+        lh_part = stream.Part(id="LH")
+        lh_part.insert(0.0, note.Note("C3"))
+        return (
+            {"easy": rh_part, "medium": rh_part, "hard": rh_part},
+            {"easy": lh_part, "medium": lh_part, "hard": lh_part},
+        )
+
+    monkeypatch.setattr(pipeline_module, "_instrumental_variants", fake_instrumental_variants)
+
+    def boom_if_called(*args, **kwargs):
+        raise AssertionError("_rh_variants/_lh_variants must not run on the instrumental path")
+
+    monkeypatch.setattr(pipeline_module, "_rh_variants", boom_if_called)
+    monkeypatch.setattr(pipeline_module, "_lh_variants", boom_if_called)
+
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post("/arrange", files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")})
+    job_id = response.json()["job_id"]
+
+    result = None
+    for _ in range(50):
+        payload = client.get(f"/arrange/{job_id}").json()
+        if "song_id" in payload or payload.get("status") == "failed":
+            result = payload
+            break
+        time.sleep(0.05)
+
+    assert result is not None, "job did not complete in time"
+    assert instrumental_called.get("called") is True
+    assert "song_id" in result, f"job failed instead of completing: {result}"
+
+
+def test_arrange_does_not_route_to_instrumental_path_with_a_real_melody(monkeypatch, synthetic_piano_wav):
+    import app.arrange_pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module, "separate_stems",
+        lambda audio_path, output_dir: Stems(
+            vocals=Path("/fake/vocals.wav"), drums=Path("/fake/drums.wav"),
+            bass=Path("/fake/bass.wav"), other=Path("/fake/other.wav"),
+        ),
+    )
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    # At/above MIN_MELODY_NOTES -- must stay on the existing path, unaffected.
+    plenty_of_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(pipeline_module.MIN_MELODY_NOTES)]
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: plenty_of_notes)
+    monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: [NoteEvent(start=0.0, end=0.5, pitch=48)])
+    monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
+    monkeypatch.setattr(pipeline_module, "detect_beat_map", lambda audio_path: BeatMap.constant(0.5))
+
+    def boom_if_called(*args, **kwargs):
+        raise AssertionError("_instrumental_variants must not run when a real melody was detected")
+
+    monkeypatch.setattr(pipeline_module, "_instrumental_variants", boom_if_called)
+
+    with open(synthetic_piano_wav, "rb") as f:
+        response = client.post("/arrange", files={"audio_file": ("synthetic_piano.wav", f, "audio/wav")})
+    job_id = response.json()["job_id"]
+
+    result = None
+    for _ in range(50):
+        payload = client.get(f"/arrange/{job_id}").json()
+        if "song_id" in payload or payload.get("status") == "failed":
+            result = payload
+            break
+        time.sleep(0.05)
+
+    assert result is not None, "job did not complete in time"
+    assert "song_id" in result, f"job failed instead of completing: {result}"
 
 
 def test_arrange_job_failure_sets_failed_status_with_detail(monkeypatch, synthetic_piano_wav):
