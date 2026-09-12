@@ -1,0 +1,6 @@
+.venv/
+storage/
+scripts/quality_harness/assets/
+scripts/quality_harness/output/
+__pycache__/
+*.pyc
