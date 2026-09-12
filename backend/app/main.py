@@ -239,7 +239,7 @@ async def arrange(
         song_id=song_id,
         dest_dir=dest_dir,
     )
-    return ArrangeSubmitResponse(job_id=job_id, status="processing")
+    return ArrangeSubmitResponse(job_id=job_id, status="queued")
 
 
 @app.get("/arrange/{job_id}")

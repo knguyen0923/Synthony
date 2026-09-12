@@ -7,7 +7,7 @@ import numpy as np
 from scipy.io import wavfile
 
 from app.chords.detect import detect_key_and_tempo
-from app.concurrency import JOB_QUEUE_TIMEOUT_SECONDS, job_slot
+from app.concurrency import JOB_QUEUE_TIMEOUT_SECONDS, NoJobSlotAvailable, job_slot
 from app.difficulty.easy import EASY_GRID, EASY_LH_RANGE, EASY_RH_RANGE
 from app.difficulty.medium import MAX_VOICING_TONES, MEDIUM_GRID, MEDIUM_LH_RANGE, MEDIUM_RH_RANGE
 from app.difficulty.quantize import quantize_part
@@ -83,7 +83,7 @@ def run_arrange_pipeline(
     dest_dir: Path,
 ) -> None:
     try:
-        logger.info("job %s: waiting for a free job slot", job_id)
+        logger.info("job %s: acquiring a job slot", job_id)
         with job_slot(blocking=True, timeout=JOB_QUEUE_TIMEOUT_SECONDS):
             set_status(job_id, "separating")
             stems = separate_stems(audio_path, dest_dir / "stems")
@@ -111,6 +111,10 @@ def run_arrange_pipeline(
             evict_oldest_songs()
 
         set_result(job_id, {"song_id": song_id, "title": title, "difficulties": difficulties})
+    except NoJobSlotAvailable as exc:
+        logger.warning("arrange job %s rejected: %s", job_id, exc)
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        set_failed(job_id, str(exc))
     except Exception as exc:
         logger.exception("arrange pipeline failed for job_id=%s song_id=%s", job_id, song_id)
         shutil.rmtree(dest_dir, ignore_errors=True)

@@ -181,8 +181,19 @@ def test_transcribe_returns_503_when_no_job_slot_available(monkeypatch, syntheti
     import threading
 
     import app.concurrency as concurrency_module
+    import app.main as main_module
 
     monkeypatch.setattr(concurrency_module, "_slots", threading.Semaphore(1))
+
+    captured_song_ids = []
+    real_new_song_id = main_module.new_song_id
+
+    def spying_new_song_id():
+        song_id = real_new_song_id()
+        captured_song_ids.append(song_id)
+        return song_id
+
+    monkeypatch.setattr(main_module, "new_song_id", spying_new_song_id)
 
     with concurrency_module.job_slot():  # occupy the only slot
         with open(synthetic_piano_wav, "rb") as f:
@@ -192,6 +203,9 @@ def test_transcribe_returns_503_when_no_job_slot_available(monkeypatch, syntheti
             )
 
     assert response.status_code == 503
+    assert captured_song_ids, "expected new_song_id() to have been called"
+    for song_id in captured_song_ids:
+        assert not (STORAGE_ROOT / song_id).exists()
 
 
 def test_cors_allows_frontend_dev_origin():
@@ -364,7 +378,7 @@ def test_arrange_full_job_lifecycle_returns_transcribe_shaped_result(monkeypatch
 
     assert response.status_code == 202
     body = response.json()
-    assert body["status"] == "processing"
+    assert body["status"] == "queued"
     job_id = body["job_id"]
 
     result = None

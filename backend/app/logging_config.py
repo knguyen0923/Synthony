@@ -10,7 +10,7 @@ def configure_logging() -> None:
     logging.basicConfig's normal "no-op after the first call" behavior."""
     level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        level=getattr(logging, level_name, logging.INFO),
+        level=logging.getLevelNamesMapping().get(level_name, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
     )
