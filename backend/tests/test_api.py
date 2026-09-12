@@ -74,9 +74,17 @@ def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monk
     worker thread via run_in_threadpool: before that fix, the whole
     single-threaded event loop was blocked for the pipeline's full
     duration, so even an unrelated /health request had to wait behind it.
-    This starts a slow /transcribe in a background thread and confirms
-    /health still responds promptly while it's still "running" (the
-    mocked transcription blocks on a threading.Event for up to 5s)."""
+    Uses its own TestClient, entered as a context manager, rather than
+    this file's shared module-level `client` -- TestClient only keeps one
+    persistent event-loop portal alive (shared across all requests made
+    through it) when used as a context manager; the module-level `client`
+    here is never entered that way, so each of its calls gets its own
+    fresh, isolated portal and could never actually contend for one
+    shared event loop the way two requests to a real running server
+    would. This starts a slow /transcribe in a background thread and
+    confirms /health -- issued through the SAME client instance -- still
+    responds promptly while it's still "running" (the mocked
+    transcription blocks on a threading.Event for up to 5s)."""
     import threading
     import time
     import app.main as main_module
@@ -90,20 +98,21 @@ def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monk
 
     monkeypatch.setattr(main_module, "transcribe_piano_audio_to_notes", _slow_then_empty)
 
-    def _make_slow_transcribe_request():
-        with open(synthetic_piano_wav, "rb") as f:
-            client.post("/transcribe", files={"audio_file": ("slow.wav", f, "audio/wav")})
+    with TestClient(app) as shared_client:
+        def _make_slow_transcribe_request():
+            with open(synthetic_piano_wav, "rb") as f:
+                shared_client.post("/transcribe", files={"audio_file": ("slow.wav", f, "audio/wav")})
 
-    thread = threading.Thread(target=_make_slow_transcribe_request)
-    thread.start()
-    time.sleep(0.3)  # let the request actually reach the mocked, blocking call
+        thread = threading.Thread(target=_make_slow_transcribe_request)
+        thread.start()
+        time.sleep(0.3)  # let the request actually reach the mocked, blocking call
 
-    start = time.monotonic()
-    health_response = client.get("/health")
-    elapsed = time.monotonic() - start
+        start = time.monotonic()
+        health_response = shared_client.get("/health")
+        elapsed = time.monotonic() - start
 
-    release.set()
-    thread.join(timeout=5.0)
+        release.set()
+        thread.join(timeout=5.0)
 
     assert health_response.status_code == 200
     assert elapsed < 1.0, f"/health took {elapsed:.2f}s -- /transcribe is still blocking the event loop"
