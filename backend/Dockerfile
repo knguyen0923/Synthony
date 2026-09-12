@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 # ffmpeg: yt-dlp needs it to extract audio from YouTube-link input.
 # fluidsynth: only needed by the test suite's synthetic_piano_note_wav
-# fixture; harmless to include so `pytest` is runnable inside the image.
+# fixture; harmless to include even though tests aren't copied/run in
+# this image (only `app` is — see the COPY below).
 # build-essential + git: madmom's sdist compiles Cython extensions and is
 # installed straight from its GitHub main branch (see requirements.txt).
 RUN apt-get update && apt-get install -y --no-install-recommends \

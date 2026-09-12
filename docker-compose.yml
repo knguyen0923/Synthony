@@ -5,6 +5,9 @@ services:
       - "8000:8000"
     volumes:
       - backend_storage:/app/storage
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
       - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
       - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}

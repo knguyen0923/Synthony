@@ -120,6 +120,14 @@ export SPOTIFY_CLIENT_SECRET=...
 
 File-upload and YouTube-link input work without these.
 
+A few other environment variables tune runtime behavior, all optional:
+
+- `MAX_CONCURRENT_JOBS` (default `2`) — caps how many heavy ML jobs
+  (transcription/separation/arrangement) run at once.
+- `LOG_LEVEL` (default `INFO`) — root logger level, e.g. `DEBUG`.
+- `JOB_QUEUE_TIMEOUT_SECONDS` (default `1800`) — how long `/arrange` waits
+  for a free job slot before failing the job.
+
 ### Frontend
 
 ```bash
@@ -147,6 +155,24 @@ All external network calls (yt-dlp, Spotify API) are mocked in the test
 suite. There is no automated frontend test suite for v1 — frontend
 correctness is verified manually in a browser.
 
+### Docker
+
+```bash
+docker compose build && docker compose up
+```
+
+This builds and runs both backend (`http://localhost:8000`) and frontend
+(`http://localhost:5173`) containers. Put Spotify credentials in a
+`backend/.env` file (see `backend/.env.example`) and compose will pick them
+up automatically.
+
+**Apple Silicon / arm64 limitation:** the backend image currently fails to
+build natively on arm64 Docker hosts — `sphn` (a transitive dependency
+pulled in via `demucs`) has no `linux/aarch64` wheel. Work around it by
+building under emulation instead: `docker compose build --platform
+linux/amd64 backend` (slow under QEMU, and the resulting image also runs
+emulated).
+
 ## API
 
 `POST /transcribe` — one of `audio_file` (multipart upload), `youtube_url`,
@@ -164,7 +190,9 @@ or `spotify_url` (form fields). Returns:
 }
 ```
 
-Audio is capped at 10 minutes server-side. Tempo is detected per-song from
+Audio is capped at 10 minutes server-side (`413` if exceeded). It can also
+return `503` if no concurrent job slot is available (see `MAX_CONCURRENT_JOBS`
+below) — the caller should retry later. Tempo is detected per-song from
 a real beat map (madmom's neural beat tracker, with a librosa global-tempo
 estimate and then a fixed 120 BPM default as successive fallbacks).
 
@@ -172,13 +200,13 @@ estimate and then a fixed 120 BPM default as successive fallbacks).
 immediately:
 
 ```json
-{ "job_id": "uuid4", "status": "processing" }
+{ "job_id": "uuid4", "status": "queued" }
 ```
 
 `GET /arrange/{job_id}` — poll for status. While running:
 
 ```json
-{ "status": "separating" | "extracting_melody" | "detecting_key" | "arranging" }
+{ "status": "queued" | "separating" | "extracting_melody" | "detecting_key" | "arranging" }
 ```
 
 When done, the same `{song_id, title, difficulties}` shape `/transcribe`
