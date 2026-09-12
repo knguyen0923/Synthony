@@ -107,6 +107,16 @@ music21 needs 3.10+, and macOS/Homebrew no longer ship 3.9).
 
 ```bash
 cd backend
+./setup.sh
+source .venv/bin/activate
+uvicorn app.main:app --reload
+```
+
+`setup.sh` runs the exact manual sequence below — shown here for
+reference, or in case the script doesn't work unmodified on your
+platform:
+
+```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
 # madmom (unmaintained since ~2022) needs numpy/Cython/scipy/mido already present
@@ -114,7 +124,6 @@ pip install --upgrade pip
 # the comments on madmom/numpy/setuptools in requirements.txt for why.
 pip install "numpy>=1.26.4,<2.0" scipy cython mido "setuptools<81"
 pip install --no-build-isolation -r requirements.txt
-uvicorn app.main:app --reload
 ```
 
 YouTube-link ingestion requires `ffmpeg` to be installed and on `PATH` (used by
