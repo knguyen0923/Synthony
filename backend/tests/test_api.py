@@ -44,7 +44,7 @@ def test_health_check_reports_missing_ffmpeg_and_undownloaded_model(monkeypatch)
     }
 
 
-def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch, caplog):
+def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch):
     import importlib
     import logging
     import shutil as shutil_module
@@ -52,10 +52,21 @@ def test_logs_a_warning_at_startup_when_ffmpeg_is_missing(monkeypatch, caplog):
 
     monkeypatch.setattr(shutil_module, "which", lambda name: None)
 
-    with caplog.at_level(logging.WARNING, logger="app.main"):
-        importlib.reload(main_module)
+    records = []
 
-    assert any("ffmpeg" in record.message.lower() for record in caplog.records)
+    class _CollectingHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _CollectingHandler()
+    app_main_logger = logging.getLogger("app.main")
+    app_main_logger.addHandler(handler)
+    try:
+        importlib.reload(main_module)
+    finally:
+        app_main_logger.removeHandler(handler)
+
+    assert any("ffmpeg" in record.getMessage().lower() for record in records)
 
 
 from pathlib import Path
