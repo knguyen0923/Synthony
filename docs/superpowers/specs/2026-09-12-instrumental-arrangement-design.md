@@ -111,11 +111,37 @@ vocals-derived in the first place.
 
 ### `arrange_pipeline.py` (modified)
 
+> **Post-implementation update (2026-09-12, after real-audio verification):**
+> the code block below is the original design. Real-audio verification
+> found `MIN_MELODY_NOTES` (a raw note count) could not work for *any*
+> threshold value — it's confounded with clip duration, not just
+> mis-tuned: a real vocal song measured at 64 notes needed to classify as
+> non-instrumental, while a real instrumental track measured at 71 notes
+> (over a much longer clip) needed to classify as instrumental, and
+> 71 > 64 makes any single count cutoff impossible. The shipped predicate
+> uses note **density** (notes/second over the detected notes' own span)
+> instead — see `_is_instrumental`/`_melody_note_density` in
+> `backend/app/arrange_pipeline.py` for the actual implementation. The
+> shipped `_instrumental_variants` also passes explicit `max_voices` to
+> `quantize_part` for RH's Easy/Medium tiers (`1` and `MAX_VOICING_TONES`
+> respectively) — the version below omits this, which silently kept the
+> lowest pitch of every RH chord instead of the highest-velocity one; caught
+> in the final whole-branch review, not real-audio verification, since
+> Hard-tier-only listening bypasses `quantize_part` entirely. It also
+> raises `ValueError("No harmonic content detected")` on empty
+> transcription, matching `_lh_variants`'s existing contract. See the
+> **Open risk** section below for the one finding real-audio verification
+> did surface: `assign_hands`'s DP-split output on real non-piano input.
+
 ```python
 MIN_MELODY_NOTES = 8  # tuning constant — a real sung melody in a full-length
                        # song produces far more than this; expect to adjust
                        # by ear/real-audio testing, same as this project's
                        # other extraction thresholds.
+                       #
+                       # SUPERSEDED — see the post-implementation note above.
+                       # Shipped as MIN_MELODY_NOTE_DENSITY (notes/second),
+                       # not a raw count.
 
 def _is_instrumental(melody_notes: list[NoteEvent]) -> bool:
     return len(melody_notes) < MIN_MELODY_NOTES
@@ -148,6 +174,9 @@ def _instrumental_variants(harmony_path: str, seconds_per_quarter: float, beat_m
     }
     return rh_variants, lh_variants
 ```
+*(This block is the original design, kept for historical context — it does
+not match the shipped code. See the update note above and the actual
+source for what shipped.)*
 
 `run_arrange_pipeline` calls `extract_melody_notes(stems.vocals)` exactly
 as today, then branches:
@@ -223,10 +252,19 @@ actually sounds like a reasonable two-hand arrangement rather than just
 
 ## Tuning parameters to expect adjusting by ear
 
-- `MIN_MELODY_NOTES` (starting at 8) — the one genuinely new tunable
-  this spec introduces; real instrumental and real pop/rock songs need to
-  be tested side by side to confirm it doesn't misclassify either
-  direction.
+- ~~`MIN_MELODY_NOTES` (starting at 8)~~ — **superseded.** Real-audio
+  verification found raw count couldn't work for any value (see the
+  post-implementation update above). Shipped as `MIN_MELODY_NOTE_DENSITY`
+  (`0.8` notes/second) plus `MIN_MELODY_NOTES_FOR_DENSITY_CHECK` (`2`, a
+  count floor below which density is undefined) — two tunables, not one,
+  and both are still validated against very little real data: 3 short
+  (~45s) real-vocal clips at 1.47-2.66 notes/s, and one real ~223s
+  instrumental track at 0.32 notes/s. No full-length real vocal song has
+  been measured yet; a real song with a long instrumental bridge or solo
+  could dilute density toward the 0.8 floor. Expect to keep tuning this as
+  more real audio is tested — the routing log line
+  (`backend/app/arrange_pipeline.py`) now reports note count and density
+  for every job, specifically so future real jobs are free tuning data.
 - Everything else (`HARD_MAX_VOICES`/`MAX_SIMULTANEOUS_VOICES_PER_HAND`,
   the difficulty grids/ranges) is inherited, already-tuned, unchanged.
 
@@ -243,3 +281,23 @@ produce a sensible split when the input notes come from an ensemble mix
 rather than one instrument played by two literal hands is unvalidated
 and is exactly the kind of question real-audio listening verification
 (above) needs to answer, not just unit tests.
+
+**Update (2026-09-12): this risk materialized.** The one real instrumental
+song tested so far (a full-band rock instrumental) produced a badly
+unbalanced split: RH got 1169 notes (83% of them below MIDI 48 — bass-
+register content in the "right hand"), LH got only 29 notes, all the same
+pitch, sparsely scattered across the piece. This is not a reasonable
+two-hand arrangement, though it is structurally valid (non-crashing,
+correctly-ranged) output. Root-cause lead from the final whole-branch
+review: `assign_hands` documents "a lone note at an onset is always
+assigned to the right hand" as a special case — correct for solo piano,
+but likely wrong for a multi-instrument mix where bass and chords land on
+distinct onsets and almost every onset group has size 1, so nearly
+everything defaults to RH. **Deliberately not fixed as part of this
+plan** — this is Spec 1's DP tuning surface, not Spec 2's, and the fix (if
+any) needs its own investigation and its own real-audio verification
+pass, not a same-pass patch bolted onto this one. Routing/detection (this
+spec's actual deliverable) is unaffected and works correctly; the
+follow-up should be scheduled, not merely filed — for an instrumental
+song, this moved the original silent-failure symptom (near-empty RH) to
+near-empty LH rather than resolving it.
