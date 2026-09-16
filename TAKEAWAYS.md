@@ -41,7 +41,7 @@ builder and the same pure difficulty engine, so nothing downstream of
 | Difficulty engine | Pure Python `Score → Score` transforms (quantize density, narrow register) | Deterministic and independently unit-testable, no ML anywhere in this step — the one place in the pipeline where "exactly right" matters more than "probably right" |
 | Backend | FastAPI, Python 3.11 | Sync `/transcribe`, async `/arrange` via `BackgroundTasks` — no Celery/Redis needed at personal-project scale |
 | Frontend | React 18 + Vite + TypeScript, OpenSheetMusicDisplay | Renders MusicXML straight in the browser, one tab per difficulty tier |
-| Testing | pytest, TDD throughout | 239 tests, plus a separate real-audio verification harness (below) that unit tests alone can't replace |
+| Testing | pytest, TDD throughout | 273 tests, plus a separate real-audio verification harness (below) that unit tests alone can't replace |
 | CI | GitHub Actions | Backend suite + frontend build/lint on every push to `main` and every PR |
 | Concurrency | A `threading.BoundedSemaphore`-based job-slot limiter | Caps simultaneous heavy ML jobs (`MAX_CONCURRENT_JOBS`, default 2) — no Celery/Redis needed at this scale |
 | Hosting | None live — Docker Compose for local runs only | A deliberate scope cut, not an oversight; see "What's next" |
@@ -253,8 +253,8 @@ wouldn't have:
   pass, a discovery-sweep bug-fix pass, a production-readiness pass, and a
   follow-up event-loop-blocking fix, across 6 active build days spanning
   2026-08-31 to 2026-09-12
-- **269 automated backend tests** (plus a separate frontend Vitest suite),
-  4,131 lines of backend test code vs. 2,494 lines of backend source
+- **273 automated backend tests** (plus a separate frontend Vitest suite),
+  4,211 lines of backend test code vs. 2,521 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
   accident)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
@@ -306,12 +306,30 @@ rather than left for a second round.
   Verified empirically (in a throwaway worktree, both by the implementer
   and independently by the final reviewer) that the corrected test fails
   without the fix and passes with it, before trusting it.
-- **Still open**: the *ingestion* step (YouTube/Spotify download via
-  yt-dlp, `librosa.get_duration`) still blocks the event loop the same
-  way the pipeline itself used to, for both `/transcribe` and `/arrange`.
-  Same fix shape (`run_in_threadpool`) — caught by the fix above's own
-  final review, deliberately scoped out as a follow-up rather than
-  expanding an already-approved merge.
+- **Resolved**: the *ingestion* step (YouTube/Spotify download via
+  yt-dlp, `librosa.get_duration`) no longer blocks the event loop —
+  `_ingest_and_validate_duration` (shared by `/transcribe` and
+  `/arrange`) now runs both blocking calls via `run_in_threadpool`, the
+  same fix shape as the pipeline fix above. Verified with the same
+  technique as that fix's own regression test: a mocked slow `ingest()`
+  call plus a concurrent `/health` request through one shared
+  `TestClient` portal, confirming `/health` stays fast while ingestion
+  is "running."
+- **Resolved**: exported MusicXML now carries an explicit tempo
+  marking. Confirmed by direct execution during the Big Rock tempo
+  investigation that no arrangement Synthony had ever exported carried
+  one at all — playback speed was entirely up to whatever default the
+  importing software assumed, decoupled from the tempo actually
+  detected in the source audio. `BeatMap.bpm_at()` already existed for
+  exactly this ("intended for eventually annotating tempo-change
+  markings in exported notation" — see `app/tempo/detect.py`); the fix
+  wires it through the one shared `build_grand_staff_score()` helper
+  (a `tempo_qpm` param → a music21 `MetronomeMark`) and a matching
+  `get_tempo()` reader so Easy/Medium correctly carry the Hard tier's
+  tempo forward, the same way `get_title()` already does. This is the
+  confirmed half of the Big Rock complaint's two hypotheses — the
+  separate "is the detected tempo itself a half-time misread" question
+  is unconfirmed and still needs a by-ear comparison; see `RESUME.md`.
 - **Broadening past pop/rock** — instrumentals, rap, orchestral, and
   multi-melody songs are explicitly out of scope for the current
   arrangement engine, deferred on purpose until the pop/rock case was

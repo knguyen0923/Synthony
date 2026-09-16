@@ -1,13 +1,44 @@
 # Resuming Synthony
 
-Updated 2026-09-12 (later session). Two full passes have landed on local
-`main` since the last update (not pushed to `origin/main` — hold until
-explicitly asked): a production-readiness pass, then a follow-up batch
-fixing `/transcribe`'s event-loop blocking. Currently mid-investigation
-on the shelved instrumental-arrangement backlog (Big Rock's tempo
-complaint) — see "In progress" below for exactly where that's paused.
+Updated 2026-09-16. Committed on top of the 2026-09-12 work below (all
+local `main`, not pushed to `origin/main` — hold until explicitly
+asked): two fixes done without needing a listening session, picked
+specifically because the Big Rock investigation is blocked waiting on
+the user's ears (see "In progress" below, unchanged from last update).
 
-## Done and merged since the last update
+## Done this session (2026-09-16), committed
+
+Both chosen because they're verifiable by inspection (score/XML
+structure, a mocked-timing regression test) — no audio listening
+required, unlike everything else queued in this file.
+
+- **Ingestion event-loop fix**: `_ingest_and_validate_duration` (shared
+  by `/transcribe` and `/arrange`) now runs `ingest()` (yt-dlp/Spotify)
+  and `librosa.get_duration()` via `run_in_threadpool`, closing the gap
+  the `/transcribe` pipeline fix's own final review had flagged and
+  deliberately scoped out. Regression test uses the same
+  TestClient-as-context-manager + mocked-blocking-call technique as
+  that fix's own test (`backend/tests/test_api.py`) — confirmed it
+  fails without the fix (5s block) and passes with it.
+- **Tempo-marking export fix**: exported MusicXML now carries an
+  explicit tempo (a music21 `MetronomeMark`) instead of leaving
+  playback speed entirely up to the importing software's own default —
+  this is the confirmed half of the Big Rock complaint below. Wired
+  through the one shared `build_grand_staff_score()` helper via a new
+  `tempo_qpm` param, using `BeatMap.bpm_at()` (which already existed in
+  `app/tempo/detect.py`, docstring literally anticipating this: "intended
+  for eventually annotating tempo-change markings in exported
+  notation"). A matching `get_tempo()` reader carries it forward through
+  Easy/Medium the same way `get_title()` already does. Full backend
+  suite: 273 passed (was 269; +4 new tests for these two fixes).
+- `TAKEAWAYS.md` updated (`What's next` section, stack table, test/line
+  counts). This file (`RESUME.md`) updated to match.
+- **Stray doc edit reverted**: `docs/superpowers/specs/2026-09-12-production-readiness-pass-design.md`
+  had picked up an accidental paste (`cool sounds good t ome` prepended
+  to its title line) before this session started. Flagged to the user,
+  reverted.
+
+## Done and merged in the 2026-09-12 session
 
 - **Production-readiness pass** (`docs/superpowers/specs/2026-09-12-production-readiness-pass-design.md`,
   `docs/superpowers/plans/2026-09-12-production-readiness-pass.md`): Demucs
