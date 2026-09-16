@@ -107,15 +107,32 @@ reads/feels sluggish independent of the metronome-mark bug's math. Can't
 confirm or rule out without listening — no audio playback available in
 this session's environment.
 
-**Next step, waiting on the user:** offered to render both tempo
-versions (detected vs. doubled) of Big Rock's arrangement for a by-ear
-comparison, or to just fix the confirmed no-tempo-marking bug first and
-revisit the octave-error question only if that turns out not to be the
-whole story. User has not yet answered which they want.
+**Next step, waiting on the user:** both tempo-mark variants of Big
+Rock's Hard-tier arrangement are now rendered and ready for a by-ear
+comparison — the actual answer requires listening, so nothing further
+can be prepped without you:
+- `/tmp/bigrock_probe/hard_tempo_detected_111bpm.musicxml` — tempo mark
+  at the detected 111 BPM (recomputed fresh via `detect_beat_map()` on
+  the same real bass+other stem mix the pipeline uses; matches the
+  107-110 BPM range from the original investigation within measurement
+  noise).
+- `/tmp/bigrock_probe/hard_tempo_doubled_222bpm.musicxml` — identical
+  notation (verified byte-for-byte equal apart from the tempo mark
+  itself), tempo mark doubled to 222 BPM.
+- Open both in notation software (e.g. MuseScore) and play back: does
+  222 BPM's doubled note-density/backbeat feel match the real recording
+  better than 111 BPM's? That's the half-time-misread hypothesis, and
+  it can only be settled by ear. Comparing total playback duration
+  against the source doesn't work as a shortcut here — both files'
+  underlying note values were quantized using the same 111 BPM detected
+  beat map in the first place, so the 111 BPM version's wall-clock
+  duration will trivially track the source regardless of whether 111 is
+  actually correct.
 
 Probe artifacts (real Demucs stems, harmony mix, exported test
-MusicXML) are in `/tmp/bigrock_probe/` — outside the repo, scratch/
-throwaway, not committed, safe to regenerate or delete.
+MusicXML, and the two tempo-variant exports above) are in
+`/tmp/bigrock_probe/` — outside the repo, scratch/throwaway, not
+committed, safe to regenerate or delete.
 
 ## Next up after Big Rock resolves
 
