@@ -116,7 +116,8 @@ async def _ingest_and_validate_duration(
             upload_filename = audio_file.filename
 
         try:
-            ingested = ingest(
+            ingested = await run_in_threadpool(
+                ingest,
                 dest_dir,
                 uploaded_file_path=upload_tmp_path,
                 uploaded_filename=upload_filename,
@@ -130,7 +131,7 @@ async def _ingest_and_validate_duration(
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     try:
-        duration = librosa.get_duration(path=str(ingested.path))
+        duration = await run_in_threadpool(librosa.get_duration, path=str(ingested.path))
     except Exception as exc:
         raise HTTPException(
             status_code=422,

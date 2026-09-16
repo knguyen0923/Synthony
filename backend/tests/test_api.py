@@ -141,6 +141,47 @@ def test_transcribe_offloads_its_pipeline_so_other_requests_are_not_blocked(monk
     assert elapsed < 1.0, f"/health took {elapsed:.2f}s -- /transcribe is still blocking the event loop"
 
 
+def test_ingestion_step_offloads_so_other_requests_are_not_blocked(monkeypatch):
+    """Regression test for wrapping the ingestion step (yt-dlp download /
+    Spotify lookup, then librosa.get_duration) in run_in_threadpool.
+    _ingest_and_validate_duration is shared by /transcribe and /arrange --
+    before this fix, a slow YouTube download blocked the single-threaded
+    event loop for its full duration the same way the pipeline itself used
+    to. Same TestClient-as-context-manager technique as the pipeline
+    regression test above -- see its docstring for why that's required."""
+    import threading
+    import time
+    import app.main as main_module
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def _slow_ingest(dest_dir, **kwargs):
+        entered.set()
+        release.wait(timeout=5.0)
+        raise main_module.IngestionError("stopped early for the test", status_code=422)
+
+    monkeypatch.setattr(main_module, "ingest", _slow_ingest)
+
+    with TestClient(app) as shared_client:
+        def _make_slow_ingest_request():
+            shared_client.post("/transcribe", data={"youtube_url": "https://youtu.be/test"})
+
+        thread = threading.Thread(target=_make_slow_ingest_request)
+        thread.start()
+        assert entered.wait(timeout=5.0), "the mocked ingest call was never reached"
+
+        start = time.monotonic()
+        health_response = shared_client.get("/health")
+        elapsed = time.monotonic() - start
+
+        release.set()
+        thread.join(timeout=5.0)
+
+    assert health_response.status_code == 200
+    assert elapsed < 1.0, f"/health took {elapsed:.2f}s -- ingestion is still blocking the event loop"
+
+
 from pathlib import Path
 
 from app.storage import STORAGE_ROOT
