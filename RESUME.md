@@ -149,16 +149,31 @@ committed, safe to regenerate or delete.
   Demucs's catch-all "other" stem (no known fix), further LH
   onset-cleanup (nothing currently prompting it).
 
-## Optional, lower priority (carried forward, unchanged)
+## Optional, lower priority
 
-- `/transcribe`'s *ingestion* step (YouTube/Spotify download, duration
-  check) still blocks the event loop the same way the pipeline itself
-  used to — caught by the fix above's own final review, deliberately
-  scoped out as its own follow-up (same `run_in_threadpool` shape) rather
-  than expanding an already-approved merge.
-- A handful of Minor findings parked across both passes above (see each
-  plan's commit history for exact rulings) — none load-bearing, all
-  independently actionable later.
+Checked 2026-09-16: this queue is now empty. Both previously-carried
+items are resolved:
+
+- The ingestion event-loop item — fixed this session (see above).
+- The "handful of Minor findings parked" from the production-readiness
+  pass's final review (4 Important + 9 Minor found; 7 fixed immediately)
+  — traced through `docs/superpowers/plans/2026-09-12-backlog-and-transcribe-fix.md`,
+  which explicitly cleared "the 5 actionable small items parked" (LOG_DIR
+  test isolation, a logger-restore fixture, `setup.sh --clear`, the
+  `HealthResponse` model, and the missing dest_dir-cleanup-on-failure
+  test — all committed in `807c41a`/`e1d7cd3`). That accounts for all 6
+  remaining after the first wave (9 Minor + 4 Important − 7 fixed = 6; 6
+  − 5 = 1), leaving exactly one: the "install recipe lives in 4 places"
+  (README/`setup.sh`/CI/Dockerfile) observation, which that plan's own
+  "Deferred" section already ruled **informational only, no concrete fix
+  proposed** — and checking now, that's correct, not stale: Dockerfile
+  and `ci.yml` each already cross-reference README's install steps in
+  their own comments, and each has a real reason to duplicate rather than
+  share a script (Dockerfile needs `maturin` for the arm64 `sphn` build
+  that CI doesn't; sourcing `setup.sh` from inside a Docker build would
+  mean creating/activating a venv inside a container, which is its own
+  design decision, not a quick win). Nothing left to pick off here
+  without a real design call.
 
 ## Where to look for more context
 
