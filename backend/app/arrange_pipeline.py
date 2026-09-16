@@ -202,8 +202,11 @@ def run_arrange_pipeline(
 
             difficulties = {}
             key_signature = key_signature_from_tonic(*detected_key)
+            tempo_qpm = beat_map.bpm_at(0.0)
             for tier in ("easy", "medium", "hard"):
-                score = build_grand_staff_score(rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature)
+                score = build_grand_staff_score(
+                    rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature, tempo_qpm=tempo_qpm
+                )
                 export_musicxml(score, dest_dir / f"{tier}.musicxml")
                 difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}
 

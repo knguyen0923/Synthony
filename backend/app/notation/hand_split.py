@@ -1,7 +1,7 @@
 import copy
 from typing import Optional
 
-from music21 import stream, note, clef, layout, metadata, key, pitch, expressions
+from music21 import stream, note, clef, layout, metadata, key, pitch, expressions, tempo
 
 from app.notation.hand_assignment import assign_hands
 from app.notation.types import NoteEvent, PedalEvent
@@ -180,7 +180,11 @@ def key_signature_from_tonic(tonic_pitch_class: int, mode: str) -> key.Key:
 
 
 def build_grand_staff_score(
-    rh: stream.Part, lh: stream.Part, title: Optional[str] = None, key_signature: Optional[key.Key] = None
+    rh: stream.Part,
+    lh: stream.Part,
+    title: Optional[str] = None,
+    key_signature: Optional[key.Key] = None,
+    tempo_qpm: Optional[float] = None,
 ) -> stream.Score:
     """Assemble RH/LH parts into a Score with a piano brace connecting them,
     so exported MusicXML renders as a single connected grand staff rather
@@ -193,7 +197,12 @@ def build_grand_staff_score(
     Also names the parts ("Right Hand"/"Left Hand") and, when given, sets
     the Score's title — without these, music21 exports an empty
     <part-name> (rendered by viewers as the internal id, an opaque hex
-    string) and a placeholder "Music21 Fragment" title."""
+    string) and a placeholder "Music21 Fragment" title.
+
+    tempo_qpm, when given, is written as a MetronomeMark on the RH part so
+    exported MusicXML carries an explicit playback tempo — without it,
+    every importer falls back to its own default BPM, entirely decoupled
+    from whatever tempo was actually detected in the source audio."""
     # Kept internally (non-empty <part-name>, needed to avoid viewers
     # falling back to the opaque internal part id) but not printed — a
     # single piano's two staves don't need a label in real engraved scores,
@@ -206,6 +215,9 @@ def build_grand_staff_score(
     if key_signature is not None:
         rh.insert(0, copy.deepcopy(key_signature))
         lh.insert(0, copy.deepcopy(key_signature))
+
+    if tempo_qpm is not None:
+        rh.insert(0, tempo.MetronomeMark(number=round(tempo_qpm)))
 
     _apply_dynamic_clef_changes(
         rh, clef.TrebleClef, clef.BassClef,
@@ -265,7 +277,7 @@ def notes_to_grand_staff(
     if pedal_events:
         _attach_pedal_marks(lh, pedal_events, beat_map)
 
-    return build_grand_staff_score(rh, lh, title=title)
+    return build_grand_staff_score(rh, lh, title=title, tempo_qpm=beat_map.bpm_at(0.0))
 
 
 def notes_to_part(
@@ -296,6 +308,17 @@ def get_title(score: stream.Score) -> Optional[str]:
     tier that builds a fresh Score from its own RH/LH parts can carry the
     title forward from its input score."""
     return score.metadata.title if score.metadata else None
+
+
+def get_tempo(score: stream.Score) -> Optional[float]:
+    """Read back the tempo_qpm set by build_grand_staff_score(), so a
+    difficulty tier that builds a fresh Score from its own RH/LH parts can
+    carry the tempo forward from its input score."""
+    rh = next((p for p in score.parts if p.id == "RH"), None)
+    if rh is None:
+        return None
+    mark = rh.getElementsByClass(tempo.MetronomeMark).first()
+    return mark.number if mark is not None else None
 
 
 def carry_clef(source: stream.Part, dest: stream.Part) -> None:

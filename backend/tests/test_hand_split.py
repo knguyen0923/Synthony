@@ -12,6 +12,7 @@ from app.notation.hand_split import (
     NOTATION_GRID,
     build_grand_staff_score,
     key_signature_from_tonic,
+    get_tempo,
 )
 from app.export import export_musicxml
 from app.tempo.detect import BeatMap
@@ -130,6 +131,44 @@ def test_grand_staff_with_no_title_falls_back_to_music21_default():
     notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
     score = notes_to_grand_staff(notes)
     assert score.metadata is None or score.metadata.title is None
+
+
+def test_grand_staff_carries_detected_tempo_as_a_metronome_mark():
+    """Without an explicit tempo marking, exported MusicXML leaves playback
+    speed entirely up to whatever default the importing software assumes,
+    decoupled from the tempo actually detected in the source audio."""
+    beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes, beat_map=beat_map)
+
+    assert get_tempo(score) == 60
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_tempo.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert '<sound tempo="60" />' in xml
+
+
+def test_grand_staff_with_no_beat_map_still_carries_the_fixed_tempo_default():
+    """The fixed-120-BPM fallback (no detected beat map) is itself a tempo
+    that should be written down, not just assumed by the importer."""
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes)
+    assert get_tempo(score) == 120
+
+
+def test_easy_and_medium_variants_carry_the_hard_tier_tempo_forward():
+    from app.difficulty.easy import to_easy
+    from app.difficulty.medium import to_medium
+
+    beat_map = BeatMap([0.0, 1.0, 2.0])  # 60 BPM
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60), NoteEvent(start=1.0, end=1.5, pitch=48)]
+    hard_score = notes_to_grand_staff(notes, beat_map=beat_map)
+
+    assert get_tempo(to_easy(hard_score)) == 60
+    assert get_tempo(to_medium(hard_score)) == 60
 
 
 def test_sustained_low_melody_run_gets_temporary_bass_clef():
