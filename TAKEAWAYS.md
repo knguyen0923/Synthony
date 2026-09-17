@@ -353,6 +353,13 @@ rather than left for a second round.
   0.935 / 0.956 over 7,707 ground-truth notes. See the lesson above.
   Unblocks the next backlog item (validating difficulty tiers against
   real human judgment, which depends on this eval existing first).
+- **In progress**: that next item — validating the rule-based difficulty
+  tiers (`app/difficulty/`) against real human sight-reading judgment —
+  has its tooling built (reused `quality_harness/run_baseline.py`'s
+  existing flow rather than a new harness; real Easy/Medium/Hard
+  MusicXML generated for all 5 MAESTRO clips) but the actual ratings
+  aren't collected yet — that step is inherently manual (open notation,
+  judge sight-readability by eye) and is the user's to do next.
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable

@@ -283,11 +283,25 @@ sub-project at a time. Priority order from that doc, highest first:
   passed (was 278; +7 new tests). Report-only, no CI gate, per the spec.
   **Unblocks 2b below.**
 - **Priority 2b — validate difficulty tiers against real human
-  judgment**: the difficulty engine (`app/difficulty/easy.py` /
-  `medium.py` / `hard.py`) is pure rule-based, no check against how
-  people actually rate playability. Depends on 2a existing first;
-  collect real (even self-rated) sight-readability judgments and check
-  whether the rule-based tiers track perceived difficulty.
+  judgment: tooling DONE, ratings NOT YET COLLECTED (your turn).**
+  Brainstormed as bounded (reuses an existing flow, no spec/plan doc).
+  `backend/scripts/quality_harness/run_baseline.py`'s `SOURCES` now
+  includes the same 5 MAESTRO clips as 2a (referenced directly from
+  `ground_truth_eval/assets/`, not duplicated) as `pipeline="transcribe"`
+  entries — ran for real, produced Easy/Medium/Hard MusicXML for all 5
+  under `quality_harness/output/maestro-difficulty-ratings/<name>/`.
+  `difficulty_ratings_template.json` is a blank 15-entry (5 pieces × 3
+  tiers) template for a 1-10 self-rated sight-reading difficulty score
+  per tier. `analyze_difficulty_ratings.py` reads a filled-in copy and
+  reports per-piece Easy<Medium<Hard ordering, violations, ties, and
+  per-tier stats (5 TDD unit tests, report-only, no verdict — the
+  learned-model decision stays yours). Full backend suite: 290 passed
+  (was 285; +5 new tests).
+  **Next step is manual and yours**: open each of the 15 `.musicxml`
+  files in your notation software, fill in `difficulty_ratings_template.json`
+  (copy it first, e.g. to `my_ratings.json`), then run
+  `../../.venv/bin/python analyze_difficulty_ratings.py my_ratings.json`
+  from `backend/scripts/quality_harness/`.
 - **Priority 3a — automatic quality proxy for the "listening pass"**:
   the quality harness's own docstring admits a human still has to
   listen to judge real quality. Consider a lightweight automatic proxy
