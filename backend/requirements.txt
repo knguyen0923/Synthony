@@ -6,6 +6,7 @@ basic-pitch[onnx]
 piano_transcription_inference
 torchlibrosa
 pretty_midi
+mir_eval  # note-transcription precision/recall/F1 (onset+pitch matching) for the MAESTRO ground-truth eval
 music21>=9.7  # need expressions.PedalMark (Spec 2 sustain-pedal notation), added in 9.5+/stabilized 9.7
 librosa
 # PyPI's madmom 0.16.1 (unmaintained since ~2022) does not import on Python 3.10+
