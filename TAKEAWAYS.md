@@ -242,6 +242,28 @@ that was already solid and missed naming the one component that mattered.
 A five-minute "does this still hold" check before any design work is
 cheap insurance against building for a stale problem statement.
 
+### A synthetic test can silently validate the wrong thing
+
+Extending time-signature detection past the fixed-4/4 assumption meant
+adding a new detector on top of madmom's joint beat+downbeat tracker, then
+testing it the project's established way: real fluidsynth-synthesized
+audio with known ground truth, not mocks. The first attempt used the same
+identical-velocity click-track style the existing beat-tracking tests
+already used successfully — and it looked like it worked, correctly
+reporting 4/4 for a 4/4 pattern. Checking the intermediate values before
+trusting that result found the real story: both the 4/4 and a 3/4 test
+clip measured well under `has_audible_signal`'s RMS gate (sparse click
+tracks are mostly silence by construction), so the detector had silently
+taken its inaudible-audio fallback path — 4/4 — for both clips. The "4/4
+result" was the fallback default matching the expected answer by pure
+coincidence; the 3/4 clip's fallback-to-4/4 immediately exposed the
+problem once actually checked. Fixed by peak-normalizing the synthesized
+audio before writing it. A test passing is not the same as a test having
+exercised the code path it claims to test — worth checking what a new
+kind of synthetic fixture actually measures before trusting a green
+result from it, especially the first time a fixture crosses paths with
+an existing gate (like an RMS floor) built for different audio.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -385,6 +407,9 @@ wouldn't have:
 - **41 frontend tests** (was 33), closing the one real gap in frontend
   coverage (`ScoreViewer.tsx`) after finding the other two named
   components already had tests
+- **Time signature detection** (3/4 vs. 4/4, madmom's joint beat+downbeat
+  tracker), closing out the entire 2026-09-16 portfolio-review backlog
+  (312 backend tests total, was 278 at the start of that backlog)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -465,6 +490,17 @@ rather than left for a second round.
   41 tests total now; lint and production build both clean. See the
   lesson above ("Check whether the backlog item is still true before
   designing the fix").
+- **Resolved**: the backlog's fifth and final item (explicitly optional,
+  lowest priority) — extending time-signature detection past the fixed
+  4/4 assumption — is done, closing out the entire 2026-09-16
+  portfolio-review backlog. `detect_time_signature()` runs madmom's joint
+  beat+downbeat tracker to distinguish 3/4 from 4/4, wired through
+  exactly like `tempo_qpm`/`key_signature` already were. 14 new tests
+  (312 total, was 298). See the lesson above ("A synthetic test can
+  silently validate the wrong thing") for a real gotcha caught along the
+  way — a synthesized test click track initially validated nothing at
+  all, its apparent success actually the silent-audio fallback
+  coincidentally matching the expected answer.
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable

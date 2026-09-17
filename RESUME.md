@@ -367,9 +367,30 @@ sub-project at a time. Priority order from that doc, highest first:
   pixel output (would test the libraries, not this component). Full
   frontend suite: 41 passed (was 33; +8 new tests). Lint and production
   build (`tsc` + `vite build`) both clean.
-- **Priority 4 (explicitly optional/lowest)** — extend key/tempo
-  detection past the current fixed-4/4-time-signature assumption
-  (documented limitation, not a bug).
+- **Priority 4 (explicitly optional/lowest): DONE.** Brainstormed as
+  bounded (mirrors the existing `tempo_qpm`/`key_signature` threading
+  pattern exactly). `app/tempo/time_signature.py`'s
+  `detect_time_signature()` runs madmom's joint beat+downbeat tracker
+  (`beats_per_bar=[3, 4]`), splits into complete bars, and returns 3/4
+  only when ≥4 bars were found and ≥90% agree on length — otherwise
+  falls back to 4/4 (the previous, implicit behavior). Wired through
+  `build_grand_staff_score()` (new `time_signature` param), a new
+  `get_time_signature()` reader for Spec 1's Easy/Medium forwarding, and
+  Spec 2's `arrange_pipeline.py` per-tier build loop, detected from the
+  same audio source (drums stem or harmony mix) already used for tempo.
+  14 new tests (7 pure logic, 3 on real fluidsynth-synthesized 3/4 and
+  4/4 click tracks, 3 more for the `build_grand_staff_score`/
+  `get_time_signature` wiring). Full backend suite: 312 passed (was 298).
+  Verified end-to-end against the real running backend too.
+  **Real gotcha caught along the way**: a first attempt at a synthetic
+  test click track (identical-velocity onsets, same style as the
+  existing beat-tracking tests) measured under `has_audible_signal`'s RMS
+  floor — its apparent "correct" 4/4 result was actually the
+  silent-audio fallback coincidentally matching, not real detection.
+  Fixed by peak-normalizing the synthesized test audio before writing it.
+  README's documented 4/4-only limitation updated.
+  **This closes out the entire 2026-09-16 portfolio-review backlog**
+  (2a, 2b, 3a, 3b, 4 — all done).
 
 ## Optional, lower priority
 
