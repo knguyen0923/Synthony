@@ -63,6 +63,12 @@ ASSETS_DIR = HARNESS_DIR / "assets"
 OUTPUT_DIR = HARNESS_DIR / "output"
 DOWNLOADS_DIR = Path.home() / "Downloads" / "synthony-arrangements"
 
+# Real MAESTRO clips fetched by the ground-truth eval (backlog item 2a) --
+# reused here (not duplicated) for the difficulty-tier human-judgment
+# validation (backlog item 2b), since both need the same real solo-piano
+# recordings. See backend/scripts/ground_truth_eval/fetch_maestro_clips.py.
+MAESTRO_ASSETS_DIR = HARNESS_DIR.parent / "ground_truth_eval" / "assets"
+
 TIERS = ("easy", "medium", "hard")
 
 
@@ -133,6 +139,40 @@ SOURCES = [
             "it for this path entirely, transcribing the bass/other stems "
             "separately instead of mixing them and hand-splitting the result."
         ),
+    ),
+    # The 5 MAESTRO test-split clips from the ground-truth eval (2a), reused
+    # here to generate real Easy/Medium/Hard MusicXML for the difficulty-tier
+    # human-judgment validation (2b) -- see clips.py in ground_truth_eval/
+    # for the same 5 names/provenance.
+    Source(
+        name="maestro_scriabin_entragete",
+        pipeline="transcribe",
+        audio_path=MAESTRO_ASSETS_DIR / "scriabin_entragete.wav",
+        note="MAESTRO v3.0.0 test-split clip (Scriabin, Entragete Op.63); see ground_truth_eval/clips.py.",
+    ),
+    Source(
+        name="maestro_debussy_etude7",
+        pipeline="transcribe",
+        audio_path=MAESTRO_ASSETS_DIR / "debussy_etude7.wav",
+        note="MAESTRO v3.0.0 test-split clip (Debussy, Etude No. 7); see ground_truth_eval/clips.py.",
+    ),
+    Source(
+        name="maestro_scarlatti_k525",
+        pipeline="transcribe",
+        audio_path=MAESTRO_ASSETS_DIR / "scarlatti_k525.wav",
+        note="MAESTRO v3.0.0 test-split clip (Scarlatti, Sonata K. 525); see ground_truth_eval/clips.py.",
+    ),
+    Source(
+        name="maestro_liszt_gnomenreigen",
+        pipeline="transcribe",
+        audio_path=MAESTRO_ASSETS_DIR / "liszt_gnomenreigen.wav",
+        note="MAESTRO v3.0.0 test-split clip (Liszt, Concert Etude \"Gnomenreigen\"); see ground_truth_eval/clips.py.",
+    ),
+    Source(
+        name="maestro_schubert_impromptu90no4",
+        pipeline="transcribe",
+        audio_path=MAESTRO_ASSETS_DIR / "schubert_impromptu90no4.wav",
+        note="MAESTRO v3.0.0 test-split clip (Schubert, Impromptu Op. 90 No. 4); see ground_truth_eval/clips.py.",
     ),
 ]
 

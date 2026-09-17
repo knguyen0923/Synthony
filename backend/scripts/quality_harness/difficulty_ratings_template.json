@@ -1,0 +1,20 @@
+{
+  "instructions": "Open each tier's .musicxml (backend/scripts/quality_harness/output/maestro-difficulty-ratings/<name>/<tier>.musicxml) in your notation software and rate how hard it would be to sight-read, 1 (trivial) to 10 (concert virtuoso). Fill in 'score' for all 15 entries, replacing null. 'notes' is optional free text.",
+  "ratings": [
+    { "name": "maestro_scriabin_entragete", "tier": "easy", "score": null, "notes": "" },
+    { "name": "maestro_scriabin_entragete", "tier": "medium", "score": null, "notes": "" },
+    { "name": "maestro_scriabin_entragete", "tier": "hard", "score": null, "notes": "" },
+    { "name": "maestro_debussy_etude7", "tier": "easy", "score": null, "notes": "" },
+    { "name": "maestro_debussy_etude7", "tier": "medium", "score": null, "notes": "" },
+    { "name": "maestro_debussy_etude7", "tier": "hard", "score": null, "notes": "" },
+    { "name": "maestro_scarlatti_k525", "tier": "easy", "score": null, "notes": "" },
+    { "name": "maestro_scarlatti_k525", "tier": "medium", "score": null, "notes": "" },
+    { "name": "maestro_scarlatti_k525", "tier": "hard", "score": null, "notes": "" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "easy", "score": null, "notes": "" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "medium", "score": null, "notes": "" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "hard", "score": null, "notes": "" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "easy", "score": null, "notes": "" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "medium", "score": null, "notes": "" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "hard", "score": null, "notes": "" }
+  ]
+}
