@@ -148,6 +148,34 @@ tested), but the actual fix still needs the originally-designed
 onset-midpoint correction heuristic. Caught only because the "confirm
 against real audio" habit extended to the fix itself, not just the bug.
 
+### A measured accuracy number beats "seems about as good as before"
+
+The quality harness (`backend/scripts/quality_harness/`) diffs objective
+metrics run-over-run — note count, voice count, pitch range — but it
+never checked correctness against a known-right answer, only "did this
+change move the numbers." A portfolio review flagged the gap: pull a
+handful of MAESTRO clips (piano recordings paired with ground-truth
+MIDI — the same corpus `piano_transcription_inference` was trained on),
+run them through Spec 1's transcription function directly, and score
+onset+pitch precision/recall/F1 against ground truth with `mir_eval`
+(the standard MIR research library, not a hand-rolled matcher). The
+harder part turned out to be getting the 5 test-split clips onto disk at
+all: MAESTRO's audio only ships inside one ~108GB zip, and neither GCS
+nor Hugging Face serves its individual extracted members as separate
+URLs (confirmed directly — per-file URLs 404). `remotezip` reads the
+zip's central directory and fetches only the requested member's bytes
+via HTTP range requests, verified live before it went in a plan: an
+~85MB member in ~5 seconds, not the time to pull 108GB. The real result,
+run against 5 held-out test-split clips spanning 5 composers: aggregate
+precision 0.977, recall 0.935, F1 0.956 over 7,707 ground-truth notes —
+close to, but measurably below, the checkpoint's own reported training
+F1 of 0.9677 (the number embedded in its filename), with the model
+consistently dropping more true notes than it hallucinates (recall
+trails precision on every clip, most on the densest/most virtuosic one).
+That gap between "the model's own reported number" and "what it actually
+does on held-out audio run through this exact pipeline" is precisely
+what a diff-only harness can never surface.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -272,10 +300,14 @@ wouldn't have:
   pass, a discovery-sweep bug-fix pass, a production-readiness pass, and a
   follow-up event-loop-blocking fix, across 6 active build days spanning
   2026-08-31 to 2026-09-12
-- **278 automated backend tests** (plus a separate frontend Vitest suite),
+- **285 automated backend tests** (plus a separate frontend Vitest suite),
   4,339 lines of backend test code vs. 2,556 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
   accident)
+- **A measured ground-truth transcription accuracy number, for the first
+  time**: 0.956 aggregate F1 (precision 0.977, recall 0.935) against 5
+  held-out MAESTRO test-split clips (7,707 ground-truth notes), replacing
+  "seems about as good as before" with an actual number
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -314,6 +346,13 @@ top of that caught a handful of doc-staleness and robustness findings
 (this file's own stale counts among them) — fixed in one final wave
 rather than left for a second round.
 
+- **Resolved**: a ground-truth transcription accuracy eval now exists
+  (`backend/scripts/ground_truth_eval/`) — the first of the 5-item
+  2026-09-16 portfolio-review backlog (see `RESUME.md`). Aggregate
+  precision/recall/F1 against 5 real MAESTRO test-split clips: 0.977 /
+  0.935 / 0.956 over 7,707 ground-truth notes. See the lesson above.
+  Unblocks the next backlog item (validating difficulty tiers against
+  real human judgment, which depends on this eval existing first).
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable

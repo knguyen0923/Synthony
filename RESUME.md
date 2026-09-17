@@ -1,15 +1,20 @@
 # Resuming Synthony
 
-Updated 2026-09-16 (later). Two fixes committed on top of the 2026-09-12
-work below (all local `main`, not pushed to `origin/main` — hold until
-explicitly asked), then an uncommitted batch of audits (code review,
-security review, dependency audits) and a docs-cleanup pass, then the
-user confirmed by ear that Big Rock's tempo is a half-time misread, then
-a drums-stem-based fix was designed, implemented, and tested — then
-proven by direct execution against real audio to NOT actually fix it
-(see "In progress" below for the full story). Per explicit user
-decision, stopped here rather than immediately building the fix that
-would actually work.
+Updated 2026-09-16 (later still). Two fixes committed on top of the
+2026-09-12 work below (all local `main`, not pushed to `origin/main` —
+hold until explicitly asked), then an audits batch (code review, security
+review, dependency audits) and a docs-cleanup pass, then the user
+confirmed by ear that Big Rock's tempo is a half-time misread, then a
+drums-stem-based fix was designed, implemented, and tested — then proven
+by direct execution against real audio to NOT actually fix it (see "Big
+Rock tempo investigation" below for the full story). Per explicit user
+decision, **Big Rock is now shelved** (superseding the earlier "stopped
+here for now" framing) in favor of working through the 2026-09-16
+portfolio-review backlog instead. That backlog's first item — a MAESTRO
+ground-truth transcription accuracy eval — was brainstormed (spec + plan
+written and committed) and fully implemented this session; see "Queued:
+2026-09-16 portfolio-review Improvement Backlog" below for the real
+measured numbers and what's next.
 
 ## Done this session (2026-09-16), committed
 
@@ -161,7 +166,7 @@ commit.
   above) — modeled after an example project (PikaRAG) the user shared as
   a format/quality-bar reference.
 
-## In progress: Big Rock tempo investigation — root cause CONFIRMED, fix not yet designed
+## Shelved: Big Rock tempo investigation — root cause CONFIRMED, fix designed but not built
 
 User asked to work through the shelved-instrumental backlog in order:
 Big Rock's tempo complaint → the broader instrumental-quality revisit →
@@ -233,13 +238,16 @@ probe artifacts (real Demucs stems, harmony mix, both tempo-variant
 MusicXML/MIDI exports) — outside the repo, scratch/throwaway, not
 committed, safe to regenerate or delete.
 
-## Next up after Big Rock resolves
+## Next up whenever Big Rock/instrumental work is revisited
+
+Both items below are on hold behind the 2026-09-16 portfolio-review
+backlog (see that section) by explicit user decision, not in priority
+order for the immediate next session:
 
 - **Instrumental-arrangement-quality revisit** — the broader shelved
   feature Big Rock is one data point for. User explicitly said "I don't
   know how I feel about it yet" after the stem-split fix; stopped
-  investing further until raised again. Now being raised again, in the
-  order above.
+  investing further until raised again.
 - **Broadening past pop/rock** — instrumentals, rap, orchestral, and
   multi-melody songs, entirely out of scope for the current arrangement
   engine. Its own brainstorm-and-spec cycle, planned last.
@@ -248,23 +256,32 @@ committed, safe to regenerate or delete.
   Demucs's catch-all "other" stem (no known fix), further LH
   onset-cleanup (nothing currently prompting it).
 
-## Queued: 2026-09-16 portfolio-review Improvement Backlog (not started, not yet saved as a doc)
+## Queued: 2026-09-16 portfolio-review Improvement Backlog
 
 User pasted a "Synthony Improvement Backlog" (from a 2026-09-16 portfolio
-review) into this session. Explicitly deprioritized behind Big Rock —
-user said "finish Big Rock first" when asked which to tackle. **Exists
-only in this session's chat history right now, not saved to any file**
-(offered to save it as a spec/backlog doc; not yet answered). Priority
-order from that doc, highest first:
+review) into this session. Big Rock was explicitly **shelved** (not
+"finish first" anymore — user chose to move on to this backlog instead)
+per a later decision in this same session. Now being worked through in
+priority order via brainstorming → spec → plan → implementation, one
+sub-project at a time. Priority order from that doc, highest first:
 
-- **Priority 2a — ground-truth transcription accuracy eval**: the
-  existing quality harness (`backend/scripts/quality_harness/`) only
-  diffs metrics run-over-run, never checks correctness against a known
-  answer. Plan: pull a handful of MAESTRO dataset clips (piano + ground
-  truth MIDI — the same corpus `piano_transcription_inference` was
-  trained on), run them through the Spec 1 solo-piano pipeline, compute
-  real note-level precision/recall/F1 (onset + pitch) against ground
-  truth.
+- **Priority 2a — ground-truth transcription accuracy eval: DONE.**
+  Spec: `docs/superpowers/specs/2026-09-16-maestro-ground-truth-eval-design.md`.
+  Plan: `docs/superpowers/plans/2026-09-16-maestro-ground-truth-eval.md`.
+  Implemented as `backend/scripts/ground_truth_eval/` (`clips.py` names 5
+  MAESTRO test-split clips; `fetch_maestro_clips.py` pulls just those via
+  `remotezip` HTTP range requests, never the full ~108GB archive;
+  `metrics.py` wraps `mir_eval.transcription` for onset+pitch
+  precision/recall/F1, 7 TDD unit tests; `eval.py` runs
+  `transcribe_piano_audio_to_notes()` directly — no HTTP, no difficulty
+  tiers — against each clip and reports per-clip + aggregate numbers).
+  **Real measured result**: aggregate precision=0.977, recall=0.935,
+  f1=0.956 over 7,707 ground-truth notes across 5 composers — see
+  `TAKEAWAYS.md`'s new "A measured accuracy number beats 'seems about as
+  good as before'" lesson for the full story and comparison against the
+  checkpoint's own reported 0.9677 training F1. Full backend suite: 285
+  passed (was 278; +7 new tests). Report-only, no CI gate, per the spec.
+  **Unblocks 2b below.**
 - **Priority 2b — validate difficulty tiers against real human
   judgment**: the difficulty engine (`app/difficulty/easy.py` /
   `medium.py` / `hard.py`) is pure rule-based, no check against how
@@ -332,6 +349,10 @@ above. Both previously-carried items are resolved:
 ## Where to look for more context
 
 - `TAKEAWAYS.md` — full project retrospective, kept current.
+- `docs/superpowers/specs/2026-09-16-maestro-ground-truth-eval-design.md`
+  + `docs/superpowers/plans/2026-09-16-maestro-ground-truth-eval.md` —
+  the MAESTRO ground-truth eval (backlog item 2a, done). The eval itself
+  lives at `backend/scripts/ground_truth_eval/`.
 - `docs/superpowers/specs/2026-09-12-production-readiness-pass-design.md`
   + `docs/superpowers/plans/2026-09-12-production-readiness-pass.md` —
   the production-readiness pass.
