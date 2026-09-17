@@ -226,6 +226,22 @@ very first real run is a stronger result than the guess deserved credit
 for, and a good argument for shipping a coarse heuristic proxy rather
 than waiting for a labeled dataset that doesn't exist.
 
+### Check whether the backlog item is still true before designing the fix
+
+The next backlog item said frontend correctness was "verified manually
+in a browser only" and named three components needing tests. Checking
+first (`npm run test`) before brainstorming a design found that premise
+was stale: `DifficultyTabs.test.tsx` and `UploadForm.test.tsx` already
+existed and passed, 2 of the 3 named components already covered, CI
+already running the whole suite. The real gap was narrower than the
+backlog claimed — just `ScoreViewer.tsx`, which the existing
+`DifficultyTabs.test.tsx` mocks out entirely (`vi.mock("./ScoreViewer",
+...)`) and so had never actually been exercised itself. Designing a test
+suite from the backlog's own description would have re-covered ground
+that was already solid and missed naming the one component that mattered.
+A five-minute "does this still hold" check before any design work is
+cheap insurance against building for a stale problem statement.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -366,6 +382,9 @@ wouldn't have:
 - **A heuristic plausibility scorer** (`score_plausibility()`, 5 checks,
   8 TDD tests) that caught a real, previously-invisible register-overlap
   issue in `arrange_instrumental_big_rock`'s output on its first real run
+- **41 frontend tests** (was 33), closing the one real gap in frontend
+  coverage (`ScoreViewer.tsx`) after finding the other two named
+  components already had tests
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -435,6 +454,17 @@ rather than left for a second round.
   `arrange_instrumental_big_rock`'s Medium/Hard tiers on its first real
   run — see the lesson above ("A heuristic proxy found a real issue on
   the first real run").
+- **Resolved**: the backlog's fourth item — a frontend test suite — is
+  done, and turned out narrower than described. `DifficultyTabs.test.tsx`
+  and `UploadForm.test.tsx` already existed (33 passing tests, CI already
+  running them); the real gap was `ScoreViewer.tsx`, mocked out entirely
+  by `DifficultyTabs.test.tsx` and never itself exercised. Added
+  `ScoreViewer.test.tsx` (8 tests: OSMD load success/failure, zoom
+  clamping, fullscreen toggle, blob download, PDF-export error path,
+  print event wiring), mocking OSMD/jsPDF/svg2pdf at the module level.
+  41 tests total now; lint and production build both clean. See the
+  lesson above ("Check whether the backlog item is still true before
+  designing the fix").
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable

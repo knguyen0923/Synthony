@@ -350,10 +350,23 @@ sub-project at a time. Priority order from that doc, highest first:
   file would silently import the wrong module depending on collection
   order. The new test loads `quality_harness/metrics.py` by explicit file
   path instead. Worth remembering if either directory gets more tests.
-- **Priority 3b — frontend test suite**: frontend correctness is
-  currently verified manually in a browser only (per the README). Even
-  a thin Vitest + React Testing Library layer on `DifficultyTabs`,
-  `UploadForm`, `ScoreViewer` would close this gap.
+- **Priority 3b — frontend test suite: DONE.** Turned out stale: checked
+  before designing anything and found `DifficultyTabs.test.tsx` (3 tests)
+  and `UploadForm.test.tsx` (7 tests) already existed and passed — 2 of
+  the 3 named components were already covered, CI already runs the whole
+  suite. The real gap was `ScoreViewer.tsx`, which
+  `DifficultyTabs.test.tsx` mocks out entirely (`vi.mock("./ScoreViewer",
+  ...)`) and so had never actually been exercised. Added
+  `ScoreViewer.test.tsx` (8 tests): OSMD load success/failure, zoom
+  clamping at 50%-250%, fullscreen toggle via a real `fullscreenchange`
+  event, blob-based MusicXML download, the PDF-export no-pages-found
+  error path, and `beforeprint`/`afterprint` page-format switching —
+  mocking `opensheetmusicdisplay`/`jspdf`/`svg2pdf.js` at the module
+  level (same technique the codebase already used to mock `ScoreViewer`
+  itself). Deliberately not testing the actual multi-page SVG-to-PDF
+  pixel output (would test the libraries, not this component). Full
+  frontend suite: 41 passed (was 33; +8 new tests). Lint and production
+  build (`tsc` + `vite build`) both clean.
 - **Priority 4 (explicitly optional/lowest)** — extend key/tempo
   detection past the current fixed-4/4-time-signature assumption
   (documented limitation, not a bug).
