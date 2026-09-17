@@ -56,7 +56,7 @@ from backend_client import (  # noqa: E402
     submit_arrange_and_wait,
     fetch_musicxml,
 )
-from metrics import analyze_musicxml, export_midi, save_json  # noqa: E402
+from metrics import analyze_musicxml, export_midi, save_json, score_plausibility  # noqa: E402
 
 HARNESS_DIR = Path(__file__).parent
 ASSETS_DIR = HARNESS_DIR / "assets"
@@ -226,10 +226,14 @@ def run_one_source(base_url: str, source: Source, label: str) -> dict:
 
         tier_metrics["midi_path"] = str(midi_path)
         tier_metrics["downloads_copy"] = str(DOWNLOADS_DIR / downloads_name)
+        plausibility_issues = score_plausibility(tier_metrics["parts"])
+        tier_metrics["plausibility_issues"] = plausibility_issues
         result_entry["tiers"][tier] = tier_metrics
         print(f"[{source.name}] {tier}: "
               f"{sum(p['note_count'] for p in tier_metrics['parts'].values())} total notes -> "
               f"{downloads_name}")
+        for issue in plausibility_issues:
+            print(f"[{source.name}] {tier}: PLAUSIBILITY FLAG ({issue['check']}, {issue['part']}): {issue['detail']}")
 
     result_entry["status"] = "ok"
     return result_entry
