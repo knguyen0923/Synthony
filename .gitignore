@@ -25,3 +25,9 @@ frontend/dist/
 # backend/scripts/quality_harness/run_baseline.py for provenance notes.
 backend/scripts/quality_harness/assets/
 backend/scripts/quality_harness/output/
+
+# MAESTRO ground-truth eval: fetched (audio, MIDI) clip pairs and generated
+# run output — never committed, same reasoning as quality_harness/ above.
+# See backend/scripts/ground_truth_eval/fetch_maestro_clips.py.
+backend/scripts/ground_truth_eval/assets/
+backend/scripts/ground_truth_eval/output/
