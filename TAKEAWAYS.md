@@ -176,6 +176,33 @@ That gap between "the model's own reported number" and "what it actually
 does on held-out audio run through this exact pipeline" is precisely
 what a diff-only harness can never surface.
 
+### Construction-order isn't the same thing as perceived difficulty
+
+The difficulty engine (`app/difficulty/easy.py`/`medium.py`/`hard.py`) is
+pure rule-based `Part`-level transforms — quantize note density, cap
+chord voicing at 3 tones, narrow register — with Hard as a pure
+passthrough. By construction, Easy always has the fewest notes and the
+narrowest range, Medium more of both, Hard the original in full: a
+guaranteed complexity ordering. Nobody had checked whether that ordering
+actually matches perceived sight-reading difficulty. Reusing the 5
+MAESTRO clips from the ground-truth eval above (no new corpus needed —
+just added as `transcribe` sources to the same `run_baseline.py`), a
+self-rated 1-10 sight-readability score across all 15 tier outputs found
+it mostly doesn't: Easy and Medium tied in 3 of 5 pieces, and Hard scored
+*lower* than Medium in 3 of 5 — a real ordering violation, not just a
+tie, despite Hard having strictly more notes by construction. The
+free-text notes explain why: the rules simplify rhythm grid and left-hand
+note *count*, but never touch melodic complexity, accidental density, or
+leaps ("every note is a flat or sharp," "every note is a 16th or 32nd
+note") — the things that actually drive sight-reading difficulty. Medium's
+3-tone chord-voicing cap may even produce *less* intuitive harmonic
+shapes than either Easy's single root note or Hard's original full chord,
+which would explain Medium occasionally rating harder than Hard, not
+easier. A small, self-rated n=5 sample is too thin to redesign the
+difficulty engine on alone, but it's a real, measured signal — the same
+category of gap the accuracy eval above surfaced for transcription,
+just for perceived difficulty instead of note correctness.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -308,6 +335,11 @@ wouldn't have:
   time**: 0.956 aggregate F1 (precision 0.977, recall 0.935) against 5
   held-out MAESTRO test-split clips (7,707 ground-truth notes), replacing
   "seems about as good as before" with an actual number
+- **A measured difficulty-tier perception check, for the first time**: of
+  5 self-rated pieces (15 tier outputs), Easy tied Medium in 3, and Hard
+  rated *lower* than Medium in 3 — the rule-based Easy<Medium<Hard
+  complexity ordering doesn't reliably match perceived sight-reading
+  difficulty
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -353,13 +385,19 @@ rather than left for a second round.
   0.935 / 0.956 over 7,707 ground-truth notes. See the lesson above.
   Unblocks the next backlog item (validating difficulty tiers against
   real human judgment, which depends on this eval existing first).
-- **In progress**: that next item — validating the rule-based difficulty
+- **Resolved**: that next item — validating the rule-based difficulty
   tiers (`app/difficulty/`) against real human sight-reading judgment —
-  has its tooling built (reused `quality_harness/run_baseline.py`'s
-  existing flow rather than a new harness; real Easy/Medium/Hard
-  MusicXML generated for all 5 MAESTRO clips) but the actual ratings
-  aren't collected yet — that step is inherently manual (open notation,
-  judge sight-readability by eye) and is the user's to do next.
+  is done. Reused `quality_harness/run_baseline.py`'s existing flow
+  (no new harness) to generate real Easy/Medium/Hard MusicXML for the
+  same 5 MAESTRO clips; the user rated all 15 outputs 1-10 for
+  sight-reading difficulty. Result: Easy tied Medium in 3/5 pieces, Hard
+  scored lower than Medium in 3/5 — the rule-based ordering doesn't
+  reliably track perceived difficulty. See the lesson above
+  ("Construction-order isn't the same thing as perceived difficulty")
+  for the full analysis and why (the rules touch rhythm/note-count, not
+  melodic/harmonic complexity). n=5 is too thin to redesign the
+  difficulty engine on alone, but it's a real, measured signal that a
+  learned or complexity-aware difficulty model is worth investigating.
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable

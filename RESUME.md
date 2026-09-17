@@ -283,25 +283,40 @@ sub-project at a time. Priority order from that doc, highest first:
   passed (was 278; +7 new tests). Report-only, no CI gate, per the spec.
   **Unblocks 2b below.**
 - **Priority 2b — validate difficulty tiers against real human
-  judgment: tooling DONE, ratings NOT YET COLLECTED (your turn).**
-  Brainstormed as bounded (reuses an existing flow, no spec/plan doc).
-  `backend/scripts/quality_harness/run_baseline.py`'s `SOURCES` now
-  includes the same 5 MAESTRO clips as 2a (referenced directly from
-  `ground_truth_eval/assets/`, not duplicated) as `pipeline="transcribe"`
-  entries — ran for real, produced Easy/Medium/Hard MusicXML for all 5
-  under `quality_harness/output/maestro-difficulty-ratings/<name>/`.
-  `difficulty_ratings_template.json` is a blank 15-entry (5 pieces × 3
-  tiers) template for a 1-10 self-rated sight-reading difficulty score
-  per tier. `analyze_difficulty_ratings.py` reads a filled-in copy and
-  reports per-piece Easy<Medium<Hard ordering, violations, ties, and
-  per-tier stats (5 TDD unit tests, report-only, no verdict — the
-  learned-model decision stays yours). Full backend suite: 290 passed
-  (was 285; +5 new tests).
-  **Next step is manual and yours**: open each of the 15 `.musicxml`
-  files in your notation software, fill in `difficulty_ratings_template.json`
-  (copy it first, e.g. to `my_ratings.json`), then run
-  `../../.venv/bin/python analyze_difficulty_ratings.py my_ratings.json`
-  from `backend/scripts/quality_harness/`.
+  judgment: DONE.** Brainstormed as bounded (reuses an existing flow, no
+  spec/plan doc). `backend/scripts/quality_harness/run_baseline.py`'s
+  `SOURCES` now includes the same 5 MAESTRO clips as 2a (referenced
+  directly from `ground_truth_eval/assets/`, not duplicated) as
+  `pipeline="transcribe"` entries — ran for real, produced Easy/Medium/
+  Hard MusicXML for all 5 under
+  `quality_harness/output/maestro-difficulty-ratings/<name>/`.
+  `difficulty_ratings_template.json` is the blank 15-entry (5 pieces × 3
+  tiers) template; `analyze_difficulty_ratings.py` reads a filled-in copy
+  and reports per-piece ordering/violations/ties/stats (5 TDD unit tests,
+  report-only). Full backend suite: 290 passed (was 285; +5 new tests).
+  **User rated all 15 outputs** (`backend/scripts/quality_harness/my_ratings.json`,
+  committed) via the real app (uploaded each `.wav` through the frontend
+  at `localhost:5173`, judged each tier's rendered notation, 1-10 scale).
+  **Real result**: Easy tied Medium in 3/5 pieces; Hard scored *lower*
+  than Medium in 3/5 (a real ordering violation, not just a tie) — the
+  rule-based Easy<Medium<Hard complexity ordering does **not** reliably
+  track perceived sight-reading difficulty. Per the user's own notes, the
+  rules simplify rhythm grid and LH note count but never touch melodic
+  complexity, accidental density, or leaps — the things that actually
+  drive perceived difficulty. See `TAKEAWAYS.md`'s new "Construction-order
+  isn't the same thing as perceived difficulty" lesson for the full
+  analysis. n=5 self-rated is too thin to redesign `app/difficulty/` on
+  alone, but it's a real, measured signal a learned/complexity-aware
+  difficulty model is worth investigating — no code change made to
+  `app/difficulty/*.py` itself, this was validation only, per the
+  original brainstormed scope.
+  **Aside, found and fixed along the way**: two dev-server processes had
+  gone stale (backend running since 2026-09-11, frontend since
+  2026-09-01, neither reflecting any code committed since) — killed and
+  restarted both; also found the frontend's `npm run dev` fails outright
+  under the shell's default Node v16 (Vite 5 needs 18+) and needs
+  `nvm use 22` first. Worth remembering for next time either server needs
+  restarting.
 - **Priority 3a — automatic quality proxy for the "listening pass"**:
   the quality harness's own docstring admits a human still has to
   listen to judge real quality. Consider a lightweight automatic proxy

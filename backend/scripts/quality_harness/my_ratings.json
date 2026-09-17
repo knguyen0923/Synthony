@@ -1,0 +1,20 @@
+{
+  "instructions": "Open each tier's .musicxml (backend/scripts/quality_harness/output/maestro-difficulty-ratings/<name>/<tier>.musicxml) in your notation software and rate how hard it would be to sight-read, 1 (trivial) to 10 (concert virtuoso). Fill in 'score' for all 15 entries, replacing null. 'notes' is optional free text.",
+  "ratings": [
+    { "name": "maestro_scriabin_entragete", "tier": "easy", "score": 8, "notes": "" },
+    { "name": "maestro_scriabin_entragete", "tier": "medium", "score": 8, "notes": "" },
+    { "name": "maestro_scriabin_entragete", "tier": "hard", "score": 6, "notes": "Why is this unreadable and so high on the right hand?" },
+    { "name": "maestro_debussy_etude7", "tier": "easy", "score":6, "notes": "" },
+    { "name": "maestro_debussy_etude7", "tier": "medium", "score": 8, "notes": "This looks correct but the left and feels empty" },
+    { "name": "maestro_debussy_etude7", "tier": "hard", "score": 7, "notes": "This seems impossible to sight-read every note is like a flat or sharp and it feels like every note is a 16th or 32nd note" },
+    { "name": "maestro_scarlatti_k525", "tier": "easy", "score": 8, "notes": "" },
+    { "name": "maestro_scarlatti_k525", "tier": "medium", "score": 8, "notes": "The best medium song so far" },
+    { "name": "maestro_scarlatti_k525", "tier": "hard", "score": 8, "notes": "The best hard song so far" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "easy", "score": 7, "notes": "The best easy song so far" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "medium", "score": 7, "notes": "Left hand seems difficult and unreadable" },
+    { "name": "maestro_liszt_gnomenreigen", "tier": "hard", "score": 7, "notes": "This seems impossible to sight-read every note is like a flat or sharp and it feels like every note is a 16th or 32nd note" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "easy", "score": 8, "notes": "" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "medium", "score": 8, "notes": "" },
+    { "name": "maestro_schubert_impromptu90no4", "tier": "hard", "score": 7, "notes": "i cant sight-read this" }
+  ]
+}
