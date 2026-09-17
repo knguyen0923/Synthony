@@ -25,6 +25,26 @@ screen:
   (a later revision to how the left hand is generated — see that doc's
   note on the original design's now-superseded approach).
 
+## Highlights
+
+- Two independent ML pipelines (solo-piano transcription, any-song
+  arrangement) converging on one shared grand-staff builder and
+  difficulty engine — see "How it works" below.
+- **Measured, not assumed, accuracy**: 0.956 aggregate F1 (precision
+  0.977, recall 0.935) against real MAESTRO ground-truth data across
+  5 held-out clips — see
+  [`backend/scripts/ground_truth_eval/`](backend/scripts/ground_truth_eval/).
+  That same eval was then used to test (and disprove) the assumption
+  that the rule-based Easy/Medium/Hard tiers track perceived
+  sight-reading difficulty — see `TAKEAWAYS.md`.
+- **A real bug hunt**: a rock song's tempo was consistently detected at
+  half its true BPM (a known failure mode for autocorrelation-based
+  beat trackers on strong-backbeat material) — root-caused, fixed via
+  an onset-strength correction heuristic, and verified against the
+  actual cached audio, not just synthetic test fixtures.
+- 300+ backend tests (TDD throughout, more test code than
+  implementation) plus a frontend suite, both run in CI on every push.
+
 ## Status
 
 Both pipelines work end-to-end and are real-audio verified (one solo

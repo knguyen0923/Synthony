@@ -1,5 +1,90 @@
 # Resuming Synthony
 
+## What's left to do (as of 2026-09-16, continued session)
+
+Goal: a recorded demo video + resume-ready summary (not live deployment).
+Two items block finishing that goal, both needing the user directly —
+everything else on the demo-prep punch list is done (see below):
+
+1. **Listen to the two Big Rock tempo-fix MIDI files** in
+   `~/Downloads/synthony-arrangements/bigrock_hard_{before,after}-tempo-onset-fix.mid`
+   and confirm the fix sounds right, so `backend/app/tempo/detect.py` +
+   its test file (currently uncommitted, deliberately held back) can be
+   committed. Not required for the demo video itself (neither picked demo
+   song is Big Rock), but still an open thread from earlier this session.
+2. **Look at the app in an actual browser** and record the demo. This
+   session verified both pipelines only at the API level (curl) because
+   the Chrome extension wasn't connected — no one has actually looked at
+   how the UI renders since the README/UX review. Dev servers were
+   running on `localhost:8000`/`:5173` at the end of this session (Node
+   22 for the frontend — `nvm use 22` first, the shell default v16
+   silently fails `npm run dev`); may need restarting if a while has
+   passed.
+
+Demo songs already picked and verified end-to-end: `transcribe_moonlight_sonata`
+(solo piano) and `arrange_song_C` (any-song, vocal-melody path) — see
+"Demo song selection" below for why.
+
+## 2026-09-16 (continued): demo/resume-prep pass
+
+User's actual goal clarified: not live deployment, just a recorded demo
+video + a resume-ready summary. Worked sequentially through a prioritized
+punch list without stopping for input at each step (per explicit
+instruction), pausing only where something genuinely needed the user:
+
+- **README polish**: added a "Highlights" section (measured F1, the
+  tempo bug-hunt story, test counts) right after the intro, for a
+  resume-linked reader who won't dig into `TAKEAWAYS.md` unprompted.
+- **Resume bullets drafted** (in-chat, not committed to a file) — 4
+  bullets sourced from `TAKEAWAYS.md`'s real numbers, no padding.
+- **Frontend UX re-checked, no change needed**: assumed the `/arrange`
+  polling UI showed raw status enum strings — checked `arrange.ts` and
+  `UploadForm.tsx` first and it already maps each stage to a friendly
+  label (`STAGE_LABELS`) and renders errors through a styled alert, not
+  raw JSON. No polish work needed here; don't re-propose this.
+- **Fresh smoke test, both pipelines, real audio, via curl** (Chrome
+  extension wasn't connected this session, so browser-driven UI
+  verification couldn't run — still outstanding, see below): killed two
+  stale dev-server processes, restarted backend cleanly and frontend
+  under Node 22 (`nvm use 22`; the shell default v16 still silently
+  fails `npm run dev`, same gotcha as the 2026-09-16 daytime session).
+  `/health` clean, `/transcribe` against `transcribe_moonlight_sonata`
+  succeeded, `/arrange` against `arrange_song_A/B/C` all succeeded. No
+  errors in either server's log beyond known-harmless
+  scikit-learn/torch/tflite version warnings.
+- **Demo song selection, backed by `score_plausibility()`, not just
+  picked**: ran the existing heuristic plausibility scorer
+  (`quality_harness/metrics.py`) against all three tiers of all three
+  `arrange_song_*` outputs — a check that had only ever been run against
+  `arrange_instrumental_big_rock` before. **New finding**:
+  `arrange_song_A` flags `note_density_sanity` on LH (Medium: 4.1
+  notes/quarter-length; Hard: 6.2, plus `voice_count_sanity` peaking at
+  7 simultaneous LH notes) — previously unnoticed, not yet root-caused.
+  `arrange_song_B` flags `register_overlap` on RH (Medium 42.6%, Hard
+  50.9% of RH notes below middle C) — the same failure shape as Big
+  Rock's known issue, on a *vocal-melody* song this time, not the
+  instrumental-fallback path — also new, also not yet root-caused.
+  **`arrange_song_C` is clean on all three tiers, no flags at all** —
+  picked as the "any song" demo track for this reason.
+  `transcribe_moonlight_sonata` (already known-clean) is the solo-piano
+  demo track. Neither `arrange_song_A`'s nor `arrange_song_B`'s new
+  flags block the demo (just don't feature those two), but they're real
+  open questions worth investigating if instrumental/arrangement-quality
+  work resumes — a second, independent data point beyond Big Rock that
+  the vocal-melody path isn't immune to hand-balance/register issues
+  either.
+- **Narration outline drafted** (in-chat) for the demo video, referencing
+  the two picked songs and the measured numbers above.
+- **Still outstanding, needs the user**: (1) listen to the two pending
+  Big Rock tempo-fix MIDI files
+  (`~/Downloads/synthony-arrangements/bigrock_hard_{before,after}-tempo-onset-fix.mid`)
+  and confirm before that fix gets committed; (2) an actual visual/UI
+  polish check in a real browser — the Chrome extension wasn't connected
+  this session so only API-level (curl) verification happened, not a
+  look at how the app actually renders.
+
+
+
 Updated 2026-09-16 (later still). Two fixes committed on top of the
 2026-09-12 work below (all local `main`, not pushed to `origin/main` —
 hold until explicitly asked), then an audits batch (code review, security
@@ -166,6 +251,83 @@ commit.
   above) — modeled after an example project (PikaRAG) the user shared as
   a format/quality-bar reference.
 
+## Resumed 2026-09-16 (night): Big Rock onset-midpoint tempo fix — built, tested, verified against real audio
+
+The user asked to resume the shelved Big Rock work (below) right after
+the low-priority venv rebuild. Implemented the previously-designed-but-
+not-built fix via TDD: `_correct_half_time_misread()` in
+`app/tempo/detect.py` checks each madmom-detected inter-beat interval for
+a comparably-strong onset (via `librosa.onset.onset_strength`) near its
+midpoint; if a strong majority of intervals show one, concludes a
+half-time misread and doubles beat density, snapping each inserted beat
+to the real local onset peak (not the naive time-midpoint). Wired into
+`detect_beat_map()` via a new `_apply_half_time_correction()` wrapper
+(any failure here silently falls back to the uncorrected beat_times,
+matching the module's existing degrade-gracefully pattern). 6 new tests
+(4 pure-logic on synthetic onset-envelope arrays, 2 on real
+fluidsynth-synthesized half-time-misread audio) — full backend suite: 318
+passed (was 312).
+
+**Verified against Big Rock's real cached audio** (both `harmony.wav` and
+the `drums.wav` stem, still in `/tmp/bigrock_probe/`), not just synthetic
+tests, per this investigation's own established standard (the drums-stem
+routing fix earlier this session looked right in unit tests but was
+disproven this same way):
+- Raw `bpm_at()` still reads ~109-111 BPM (the known misread, unchanged —
+  expected, since correction runs *after* raw detection). Corrected
+  `bpm_at()` reads **~203-213 BPM** across both stems and sampled
+  throughout the whole track (not just one point) — matching the
+  ~215-220 BPM the user confirmed by ear earlier this session.
+- **Regenerated Big Rock's actual Hard-tier MusicXML** end-to-end (real
+  transcription of the cached bass/other stems, not a shortcut) and
+  compared real notated-duration histograms via
+  `quality_harness/metrics.py`'s `analyze_musicxml()`: pre-fix, ~75-77%
+  of RH/LH notes fell in the "dotted-16th/8th" duration bucket — exactly
+  the user's original complaint ("every note is a 16th or 32nd note").
+  Post-fix, that collapses to ~12-20%, redistributing mostly into
+  quarter/eighth-note buckets. This is the first *objective, measured*
+  confirmation that the fix changes the actual notated rhythm, not just
+  the exported tempo label — because `BeatMap.to_quarter_length()` (fed
+  by the now-doubled beat density) drives real rhythm quantization
+  throughout the pipeline, not only the `MetronomeMark` export.
+  `score_plausibility()`'s register-overlap flag on Right Hand is
+  essentially unchanged (77.7%→76.2%), confirming that's a separate,
+  unrelated issue (see below), not something this fix touches or masks.
+- Before/after MIDI exported for listening confirmation:
+  `~/Downloads/synthony-arrangements/bigrock_hard_{before,after}-tempo-onset-fix.mid`.
+  **Not yet listened to by the user** — objective metrics are strong but
+  this project's own norm is real-audio listening confirmation before
+  calling a fix done, so this is the next step, not a closed item.
+- Changes uncommitted, per this session's established pattern for Big
+  Rock work (staged for user review/decision, same as the earlier
+  drums-stem routing change).
+
+## Also this session (2026-09-16, night): housekeeping, no user input needed
+
+Done after the user asked to "do everything that doesn't involve me
+first" (register-overlap root-cause and the broader instrumental/
+broadening-past-pop-rock items were explicitly left alone since those
+tie into paused threads only the user can re-open):
+
+- **`TAKEAWAYS.md` split**: it had grown to 566 lines, well past this
+  project's own ~400-line file-size guideline. Moved the "What I
+  actually learned, by area" section (17 lessons) out into a new
+  `TAKEAWAYS_LESSONS.md`, fixed all "see the lesson above"
+  cross-references to point at the new file. `TAKEAWAYS.md` is now 274
+  lines (overview/stack/architecture/by-the-numbers/what's-next only).
+- **Swept superseded listening-export MIDI files** from
+  `~/Downloads/synthony-arrangements/` per the established norm (delete
+  once a round is resolved, don't wait to be asked) — 15 MAESTRO
+  difficulty-rating files (backlog 2b, already committed in
+  `my_ratings.json`) and 6 plausibility-check files (backlog 3a, already
+  committed). Confirmed with the user first since the harness's own
+  permission classifier flagged the deletion (outside the repo, in
+  `~/Downloads/`) for confirmation. Kept the two still-pending Big Rock
+  before/after tempo-fix MIDI files untouched (see section above).
+- Both changes are just docs/local-file cleanup — no test suite impact.
+  `TAKEAWAYS_LESSONS.md` is untracked (new file), `TAKEAWAYS.md`'s edit
+  is uncommitted, same as everything else pending in this session.
+
 ## Shelved: Big Rock tempo investigation — root cause CONFIRMED, fix designed but not built
 
 User asked to work through the shelved-instrumental backlog in order:
@@ -215,15 +377,14 @@ execution against real audio:**
   stop here for now rather than immediately implement the next fix.
   Changes are uncommitted, staged for the user to review (matching
   this session's established norm).
-- **Still-needed fix, designed but not implemented**: the
-  onset-midpoint correction heuristic from the original (pre-pivot)
-  brainstorm — for each detected inter-beat interval, check (via a
+- **Onset-midpoint correction heuristic: now built** (see the section
+  above this one) — for each detected inter-beat interval, checks (via a
   librosa onset-strength envelope) whether there's a comparably strong
   onset near the midpoint; if a strong majority of intervals show one,
-  conclude a half-time misread and insert beats at those midpoints
+  concludes a half-time misread and inserts beats at those midpoints
   (snapped to the real local onset peak, not the naive time-midpoint),
-  doubling `beat_times` density. This targets the actual ambiguity
-  directly and doesn't depend on which stem it runs on. Not yet built.
+  doubling `beat_times` density. Targets the actual ambiguity directly
+  and doesn't depend on which stem it runs on, as originally designed.
 
 **Both original hypotheses are now resolved** (superseding the
 "Open, unconfirmed hypothesis"/"Next step, waiting on the user" text
@@ -394,23 +555,15 @@ sub-project at a time. Priority order from that doc, highest first:
 
 ## Optional, lower priority
 
-One real item, newly found this session — everything previously carried
-here is resolved (see below):
+Empty — the one item previously carried here is resolved:
 
-- **Broken local backend venv**: `backend/.venv`'s `activate` script and
-  nearly every installed console-script (`pip`, `pytest`, `uvicorn`,
-  `fastapi`, `demucs`, `yt-dlp`, etc.) have shebangs/paths hardcoded to
-  `.venv-py311`, a directory that no longer exists on this machine — the
-  venv was apparently created at that name originally, then renamed to
-  `.venv` without regenerating its scripts. Effect: `source
-  .venv/bin/activate` silently fails to put the real venv on `PATH` and
-  falls back to base Anaconda instead. Confirmed local-only, gitignored
-  machine state (`.gitignore` line 4 covers `.venv`; no CI workflow
-  references `setup.sh` or this venv) — nothing to fix via a commit.
-  Fix is a multi-minute `bash backend/setup.sh` rebuild (re-clones/builds
-  `madmom`, reinstalls `demucs`/`torch`/etc.); declined to run it
-  unprompted given the time/bandwidth cost, offered to the user, not yet
-  answered.
+- **Broken local backend venv**: fixed this session by rebuilding via
+  `bash backend/setup.sh` (user asked for this first, before resuming
+  Big Rock work). Confirmed fixed: `which python`/`which pytest` now
+  resolve inside `.venv` correctly (no more silent fallback to base
+  Anaconda), and the full backend suite passes clean against it (312
+  passed, matching the pre-rebuild count). Local machine state only, no
+  commit.
 
 Checked 2026-09-16 (earlier in the day): this queue was empty before the
 above. Both previously-carried items are resolved:
