@@ -2,7 +2,14 @@ import copy
 
 from music21 import stream
 
-from app.notation.hand_split import carry_clef, get_hand_parts, build_grand_staff_score, get_title, get_tempo
+from app.notation.hand_split import (
+    carry_clef,
+    get_hand_parts,
+    build_grand_staff_score,
+    get_title,
+    get_tempo,
+    get_time_signature,
+)
 from app.difficulty.quantize import quantize_part
 from app.difficulty.range_shift import shift_into_range
 
@@ -21,7 +28,10 @@ def to_medium(score: stream.Score) -> stream.Score:
     rh_ranged = shift_into_range(rh_quantized, *MEDIUM_RH_RANGE)
     lh_ranged = shift_into_range(lh_voiced, *MEDIUM_LH_RANGE)
 
-    return build_grand_staff_score(rh_ranged, lh_ranged, title=get_title(score), tempo_qpm=get_tempo(score))
+    return build_grand_staff_score(
+        rh_ranged, lh_ranged, title=get_title(score), tempo_qpm=get_tempo(score),
+        time_signature=get_time_signature(score),
+    )
 
 
 def _voice_chords_per_slot(lh_part: stream.Part, grid: float) -> stream.Part:

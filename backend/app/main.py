@@ -17,6 +17,7 @@ from app.concurrency import NoJobSlotAvailable, job_slot
 from app.jobs import create_job, get_job
 from app.ingestion.normalize import ingest, IngestionError
 from app.tempo.detect import detect_beat_map
+from app.tempo.time_signature import detect_time_signature
 from app.transcription.audio_to_midi import piano_checkpoint_downloaded, transcribe_piano_audio_to_notes
 from app.notation.hand_split import notes_to_grand_staff
 from app.difficulty.engine import generate_variants
@@ -189,9 +190,11 @@ def _run_transcription_pipeline(audio_path: str, title: str, dest_dir: Path) -> 
             raise HTTPException(status_code=422, detail="No pitched content detected")
 
         beat_map = detect_beat_map(audio_path)
+        time_signature = detect_time_signature(audio_path)
 
         score = notes_to_grand_staff(
-            notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events
+            notes, title=title, beat_map=beat_map, pedal_events=transcription.pedal_events,
+            time_signature=time_signature,
         )
         variants = generate_variants(score)
 

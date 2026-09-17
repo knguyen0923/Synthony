@@ -1,7 +1,7 @@
 import copy
 from typing import Optional
 
-from music21 import stream, note, clef, layout, metadata, key, pitch, expressions, tempo
+from music21 import stream, note, clef, layout, metadata, key, meter, pitch, expressions, tempo
 
 from app.notation.hand_assignment import assign_hands
 from app.notation.types import NoteEvent, PedalEvent
@@ -185,6 +185,7 @@ def build_grand_staff_score(
     title: Optional[str] = None,
     key_signature: Optional[key.Key] = None,
     tempo_qpm: Optional[float] = None,
+    time_signature: Optional[meter.TimeSignature] = None,
 ) -> stream.Score:
     """Assemble RH/LH parts into a Score with a piano brace connecting them,
     so exported MusicXML renders as a single connected grand staff rather
@@ -202,7 +203,13 @@ def build_grand_staff_score(
     tempo_qpm, when given, is written as a MetronomeMark on the RH part so
     exported MusicXML carries an explicit playback tempo — without it,
     every importer falls back to its own default BPM, entirely decoupled
-    from whatever tempo was actually detected in the source audio."""
+    from whatever tempo was actually detected in the source audio.
+
+    time_signature, when given, is written on both parts so measures are
+    barred accordingly — without it, music21's own default (4/4) applies
+    during MusicXML export's implicit makeMeasures() pass, silently
+    assuming 4/4 for any audio in a different meter (see
+    app.tempo.time_signature.detect_time_signature)."""
     # Kept internally (non-empty <part-name>, needed to avoid viewers
     # falling back to the opaque internal part id) but not printed — a
     # single piano's two staves don't need a label in real engraved scores,
@@ -215,6 +222,10 @@ def build_grand_staff_score(
     if key_signature is not None:
         rh.insert(0, copy.deepcopy(key_signature))
         lh.insert(0, copy.deepcopy(key_signature))
+
+    if time_signature is not None:
+        rh.insert(0, copy.deepcopy(time_signature))
+        lh.insert(0, copy.deepcopy(time_signature))
 
     if tempo_qpm is not None:
         rh.insert(0, tempo.MetronomeMark(number=round(tempo_qpm)))
@@ -243,6 +254,7 @@ def notes_to_grand_staff(
     title: Optional[str] = None,
     beat_map: Optional[BeatMap] = None,
     pedal_events: Optional[list[PedalEvent]] = None,
+    time_signature: Optional[meter.TimeSignature] = None,
 ) -> stream.Score:
     """Assign notes to right/left hand via a continuity-aware dynamic-
     programming search (app.notation.hand_assignment.assign_hands) that
@@ -257,7 +269,12 @@ def notes_to_grand_staff(
     pedal_events, when given, are attached to the LH part as music21
     PedalMark spanners (Spec 1's Hard tier only — see
     app.transcription.audio_to_midi.transcribe_piano_audio_to_notes, the
-    only source of real pedal data)."""
+    only source of real pedal data).
+
+    time_signature, when given (from
+    app.tempo.time_signature.detect_time_signature), is passed straight
+    through to build_grand_staff_score; omitting it keeps music21's
+    default 4/4 assumption."""
     beat_map = beat_map or BeatMap.constant(SECONDS_PER_QUARTER)
     rh = stream.Part(id="RH")
     rh.append(clef.TrebleClef())
@@ -277,7 +294,9 @@ def notes_to_grand_staff(
     if pedal_events:
         _attach_pedal_marks(lh, pedal_events, beat_map)
 
-    return build_grand_staff_score(rh, lh, title=title, tempo_qpm=beat_map.bpm_at(0.0))
+    return build_grand_staff_score(
+        rh, lh, title=title, tempo_qpm=beat_map.bpm_at(0.0), time_signature=time_signature
+    )
 
 
 def notes_to_part(
@@ -319,6 +338,16 @@ def get_tempo(score: stream.Score) -> Optional[float]:
         return None
     mark = rh.getElementsByClass(tempo.MetronomeMark).first()
     return mark.number if mark is not None else None
+
+
+def get_time_signature(score: stream.Score) -> Optional[meter.TimeSignature]:
+    """Read back the time_signature set by build_grand_staff_score(), so a
+    difficulty tier that builds a fresh Score from its own RH/LH parts can
+    carry it forward from its input score."""
+    rh = next((p for p in score.parts if p.id == "RH"), None)
+    if rh is None:
+        return None
+    return rh.getElementsByClass(meter.TimeSignature).first()
 
 
 def carry_clef(source: stream.Part, dest: stream.Part) -> None:

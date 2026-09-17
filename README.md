@@ -253,7 +253,9 @@ Audio is capped at 10 minutes server-side (`413` if exceeded). It can also
 return `503` if no concurrent job slot is available (see `MAX_CONCURRENT_JOBS`
 below) — the caller should retry later. Tempo is detected per-song from
 a real beat map (madmom's neural beat tracker, with a librosa global-tempo
-estimate and then a fixed 120 BPM default as successive fallbacks).
+estimate and then a fixed 120 BPM default as successive fallbacks). Time
+signature (3/4 vs. 4/4, falling back to 4/4 otherwise) is detected the
+same way, from madmom's joint beat+downbeat tracker.
 
 `POST /arrange` — same input fields as `/transcribe`. Returns `202`
 immediately:
@@ -272,9 +274,12 @@ When done, the same `{song_id, title, difficulties}` shape `/transcribe`
 returns (so the frontend's result view needs no pipeline-specific
 branching). On failure, `{"status": "failed", "detail": "..."}`.
 
-Audio is capped at 10 minutes server-side. Tempo and key are both
-detected per-song from the separated bass+other stems (chroma analysis +
-beat-tracking); time signature is assumed fixed at 4/4.
+Audio is capped at 10 minutes server-side. Tempo, key, and time signature
+are all detected per-song from the separated bass+other stems (chroma
+analysis, beat-tracking, and joint beat+downbeat tracking respectively).
+Time signature detection distinguishes 3/4 from 4/4 only (the two most
+common cases for pop/rock/classical repertoire); other meters (2/4, 6/8,
+...) fall back to 4/4, as does any audio where detection isn't confident.
 
 ## Project layout
 

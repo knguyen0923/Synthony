@@ -27,6 +27,7 @@ from app.notation.voice_cap import cap_simultaneous_notes
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
 from app.tempo.detect import BeatMap, detect_beat_map, has_audible_signal
+from app.tempo.time_signature import detect_time_signature
 from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 logger = logging.getLogger(__name__)
@@ -194,11 +195,10 @@ def run_arrange_pipeline(
             # drums stem we'd otherwise throw away. Fall back to the
             # harmony mix (pre-fix behavior) when drums is near-silent
             # (e.g. a song with no percussion).
-            beat_map = (
-                detect_beat_map(str(stems.drums))
-                if has_audible_signal(str(stems.drums))
-                else detect_beat_map(str(harmony_path))
-            )
+            drums_audible = has_audible_signal(str(stems.drums))
+            beat_source_path = str(stems.drums) if drums_audible else str(harmony_path)
+            beat_map = detect_beat_map(beat_source_path)
+            time_signature = detect_time_signature(beat_source_path)
 
             set_status(job_id, "arranging")
             if _is_instrumental(melody_notes):
@@ -216,7 +216,8 @@ def run_arrange_pipeline(
             tempo_qpm = beat_map.bpm_at(0.0)
             for tier in ("easy", "medium", "hard"):
                 score = build_grand_staff_score(
-                    rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature, tempo_qpm=tempo_qpm
+                    rh_variants[tier], lh_variants[tier], title=title, key_signature=key_signature,
+                    tempo_qpm=tempo_qpm, time_signature=time_signature,
                 )
                 export_musicxml(score, dest_dir / f"{tier}.musicxml")
                 difficulties[tier] = {"musicxml_url": f"/storage/{song_id}/{tier}.musicxml"}

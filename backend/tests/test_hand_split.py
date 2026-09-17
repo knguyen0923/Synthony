@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from music21 import clef, expressions, note, stream
+from music21 import clef, expressions, meter, note, stream
 
 from app.notation.types import NoteEvent, PedalEvent
 from app.notation.hand_split import (
@@ -13,6 +13,7 @@ from app.notation.hand_split import (
     build_grand_staff_score,
     key_signature_from_tonic,
     get_tempo,
+    get_time_signature,
 )
 from app.export import export_musicxml
 from app.tempo.detect import BeatMap
@@ -169,6 +170,51 @@ def test_easy_and_medium_variants_carry_the_hard_tier_tempo_forward():
 
     assert get_tempo(to_easy(hard_score)) == 60
     assert get_tempo(to_medium(hard_score)) == 60
+
+
+def test_grand_staff_carries_a_given_time_signature_into_exported_musicxml():
+    """Without an explicit time signature, exported MusicXML barring is
+    entirely up to music21's own default (4/4), silently assuming common
+    time for audio detected in a different meter."""
+    three_four = meter.TimeSignature("3/4")
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes, time_signature=three_four)
+
+    assert get_time_signature(score).ratioString == "3/4"
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_time_sig.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<beats>3</beats>" in xml
+    assert "<beat-type>4</beat-type>" in xml
+
+
+def test_grand_staff_with_no_time_signature_given_stays_default_4_4():
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60)]
+    score = notes_to_grand_staff(notes)
+
+    assert get_time_signature(score) is None
+
+    with TemporaryDirectory() as tmpdir:
+        output_path = Path(tmpdir) / "test_no_time_sig.musicxml"
+        export_musicxml(score, output_path)
+        xml = output_path.read_text()
+
+    assert "<beats>4</beats>" in xml
+
+
+def test_easy_and_medium_variants_carry_the_hard_tier_time_signature_forward():
+    from app.difficulty.easy import to_easy
+    from app.difficulty.medium import to_medium
+
+    three_four = meter.TimeSignature("3/4")
+    notes = [NoteEvent(start=0.0, end=0.5, pitch=60), NoteEvent(start=1.0, end=1.5, pitch=48)]
+    hard_score = notes_to_grand_staff(notes, time_signature=three_four)
+
+    assert get_time_signature(to_easy(hard_score)).ratioString == "3/4"
+    assert get_time_signature(to_medium(hard_score)).ratioString == "3/4"
 
 
 def test_sustained_low_melody_run_gets_temporary_bass_clef():
