@@ -317,12 +317,39 @@ sub-project at a time. Priority order from that doc, highest first:
   under the shell's default Node v16 (Vite 5 needs 18+) and needs
   `nvm use 22` first. Worth remembering for next time either server needs
   restarting.
-- **Priority 3a — automatic quality proxy for the "listening pass"**:
-  the quality harness's own docstring admits a human still has to
-  listen to judge real quality. Consider a lightweight automatic proxy
-  (pitch/rhythm plausibility scorer, or a classifier for obviously bad
-  arrangements) to cut down how often a human has to listen, not
-  replace it.
+- **Priority 3a — automatic quality proxy for the "listening pass": DONE.**
+  Brainstormed as bounded (extends `metrics.py`, no spec/plan doc). No
+  labeled good/bad corpus exists, so went heuristic (not a trained
+  classifier), per the backlog's own first-listed option.
+  `score_plausibility()` in `backend/scripts/quality_harness/metrics.py`
+  flags gross RH/LH failures from the same `analyze_part()`-shaped stats
+  `analyze_musicxml()` already computes: hand balance (<10% of total
+  notes on one hand — calibrated against Big Rock's real historical
+  defect, RH1169/LH29), register overlap (>30% of a hand's notes in the
+  other hand's register, via a new `register_split` field), note-duration
+  sanity (>40% shorter than a 16th note), voice-count sanity (>6
+  simultaneous notes in one hand), note-density sanity (near-silent or
+  implausibly dense). Report-only, a list of flagged issues, no
+  aggregate score, no gate — only the hand-balance threshold is
+  empirically calibrated, the rest are documented as reasonable-guess
+  heuristics. Wired into `run_baseline.py` right after
+  `analyze_musicxml()`. 8 TDD unit tests. Full backend suite: 298 passed
+  (was 290; +8 new tests).
+  **Real result, ran against the existing corpus**:
+  `transcribe_moonlight_sonata` (Spec 1, solo piano) flags nothing across
+  all 3 tiers. `arrange_instrumental_big_rock`'s Medium and Hard tiers
+  flag a real register-overlap issue nobody had previously surfaced:
+  41.5%/79.1% of RH notes fall below middle C — exactly the kind of
+  gross-failure signal this was built to catch without a human listening
+  first. Not yet root-caused (a new observation, not a fix) — worth
+  investigating if instrumental-arrangement work resumes.
+  **Also found and fixed along the way**: pytest's bare-module-name
+  collision between `ground_truth_eval/metrics.py` and
+  `quality_harness/metrics.py` — confirmed by direct reproduction that a
+  naive `from metrics import ...` in a second `quality_harness/` test
+  file would silently import the wrong module depending on collection
+  order. The new test loads `quality_harness/metrics.py` by explicit file
+  path instead. Worth remembering if either directory gets more tests.
 - **Priority 3b — frontend test suite**: frontend correctness is
   currently verified manually in a browser only (per the README). Even
   a thin Vitest + React Testing Library layer on `DifficultyTabs`,

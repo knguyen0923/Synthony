@@ -203,6 +203,29 @@ difficulty engine on alone, but it's a real, measured signal — the same
 category of gap the accuracy eval above surfaced for transcription,
 just for perceived difficulty instead of note correctness.
 
+### A heuristic proxy found a real issue on the first real run
+
+The quality harness's own docstring admits a human still has to listen
+to judge real quality — every run, no exceptions. With no labeled
+good/bad-arrangement corpus to train a classifier on, the honest move was
+a heuristic scorer instead: hand balance, register overlap, note-duration
+sanity, voice-count sanity, and note-density sanity, all computed from
+stats `metrics.py` already produces. Only one threshold (hand balance)
+had a real calibration point to aim at — Big Rock's old, since-fixed
+RH1169/LH29 hand-split defect — the rest are documented, upfront, as
+reasonable guesses rather than validated thresholds. Run for real against
+the existing 5-source corpus (not a synthetic smoke test) before calling
+it done: `transcribe_moonlight_sonata` cleared all three tiers, but
+`arrange_instrumental_big_rock`'s Medium and Hard tiers flagged a real
+register-overlap issue — 41.5%/79.1% of right-hand notes sitting below
+middle C — that nobody had previously surfaced, on a track everyone
+already assumed was fixed. Not root-caused yet, and the threshold that
+caught it (30% register overlap) was itself an unvalidated guess — but a
+guessed threshold that surfaces a real, previously-invisible issue on its
+very first real run is a stronger result than the guess deserved credit
+for, and a good argument for shipping a coarse heuristic proxy rather
+than waiting for a labeled dataset that doesn't exist.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -340,6 +363,9 @@ wouldn't have:
   rated *lower* than Medium in 3 — the rule-based Easy<Medium<Hard
   complexity ordering doesn't reliably match perceived sight-reading
   difficulty
+- **A heuristic plausibility scorer** (`score_plausibility()`, 5 checks,
+  8 TDD tests) that caught a real, previously-invisible register-overlap
+  issue in `arrange_instrumental_big_rock`'s output on its first real run
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
   each producing **3 difficulty tiers**, converging on one shared
   grand-staff builder and one shared difficulty engine
@@ -398,6 +424,17 @@ rather than left for a second round.
   melodic/harmonic complexity). n=5 is too thin to redesign the
   difficulty engine on alone, but it's a real, measured signal that a
   learned or complexity-aware difficulty model is worth investigating.
+- **Resolved**: the backlog's third item — an automatic quality proxy for
+  the listening pass — is done. `score_plausibility()` (5 heuristic
+  checks: hand balance, register overlap, note-duration sanity,
+  voice-count sanity, note-density sanity) flags gross RH/LH failures
+  without a human listening first, wired into `run_baseline.py`. Only
+  the hand-balance threshold is empirically calibrated (against Big
+  Rock's old real defect); the rest are documented as reasonable
+  guesses. Caught a real, previously-unnoticed register-overlap issue in
+  `arrange_instrumental_big_rock`'s Medium/Hard tiers on its first real
+  run — see the lesson above ("A heuristic proxy found a real issue on
+  the first real run").
 - **Resolved**: `/transcribe`'s pipeline no longer blocks the event loop —
   the CPU-bound half (transcription, notation, export) now runs via
   `run_in_threadpool`, so the `MAX_CONCURRENT_JOBS` guardrail is reachable
