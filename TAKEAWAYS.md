@@ -129,6 +129,25 @@ silently inflate every note's duration underneath it — using signal the
 transcription model was producing all along and had simply been
 discarded.
 
+### A plausible root-cause hypothesis still needs direct verification
+
+Mid-investigation into Big Rock's "plays too slow" complaint, once a
+half-time tempo-detection misread was confirmed by ear, the natural next
+hypothesis was that the beat tracker was being fed an ambiguous signal —
+it ran on a bass+other "harmony" mix, and Demucs already separates a
+`drums` stem (unused anywhere in the codebase) that should carry a far
+clearer, less ambiguous beat signal. That reasoning was sound but wrong:
+running the same detector directly on Big Rock's real isolated drums
+stem still misread it at ~107 BPM, identical to the harmony-mix result.
+The half-time ambiguity turned out to live in the backbeat pattern's own
+accent structure (a driving rock backbeat's strongest hits *are* at the
+half-time rate), not in cross-instrument interference — isolating the
+drums doesn't remove an ambiguity that isn't about instrument bleed in
+the first place. The stem-routing change shipped anyway (harmless, fully
+tested), but the actual fix still needs the originally-designed
+onset-midpoint correction heuristic. Caught only because the "confirm
+against real audio" habit extended to the fix itself, not just the bug.
+
 ### Deliberately not swapping something is as important a decision as swapping it
 
 Spec 2's left hand stayed on Basic Pitch even after a piano-specific
@@ -253,8 +272,8 @@ wouldn't have:
   pass, a discovery-sweep bug-fix pass, a production-readiness pass, and a
   follow-up event-loop-blocking fix, across 6 active build days spanning
   2026-08-31 to 2026-09-12
-- **273 automated backend tests** (plus a separate frontend Vitest suite),
-  4,211 lines of backend test code vs. 2,521 lines of backend source
+- **278 automated backend tests** (plus a separate frontend Vitest suite),
+  4,339 lines of backend test code vs. 2,556 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
   accident)
 - **2 full pipelines** (solo-piano transcription, any-song arrangement),
@@ -327,9 +346,18 @@ rather than left for a second round.
   (a `tempo_qpm` param → a music21 `MetronomeMark`) and a matching
   `get_tempo()` reader so Easy/Medium correctly carry the Hard tier's
   tempo forward, the same way `get_title()` already does. This is the
-  confirmed half of the Big Rock complaint's two hypotheses — the
-  separate "is the detected tempo itself a half-time misread" question
-  is unconfirmed and still needs a by-ear comparison; see `RESUME.md`.
+  confirmed half of the Big Rock complaint's two hypotheses.
+- **Confirmed, not yet fixed**: the second hypothesis — that the
+  detected tempo itself is a half-time misread — is now confirmed by
+  ear (a doubled-BPM render matches the real recording's backbeat
+  better than the detected-BPM render). A drums-stem-preferred routing
+  change shipped and is fully tested (`has_audible_signal` +
+  `run_arrange_pipeline` preferring Demucs's previously-unused `drums`
+  stem over the bass+other harmony mix when it carries real signal),
+  but direct verification against Big Rock's actual drums stem showed
+  it doesn't fix the misread — see the lesson above. The actual fix
+  (an onset-midpoint correction heuristic) is designed but not yet
+  implemented; paused here per explicit user decision. See `RESUME.md`.
 - **Broadening past pop/rock** — instrumentals, rap, orchestral, and
   multi-melody songs are explicitly out of scope for the current
   arrangement engine, deferred on purpose until the pop/rock case was

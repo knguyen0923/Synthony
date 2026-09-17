@@ -1,10 +1,15 @@
 # Resuming Synthony
 
-Updated 2026-09-16. Committed on top of the 2026-09-12 work below (all
-local `main`, not pushed to `origin/main` — hold until explicitly
-asked): two fixes done without needing a listening session, picked
-specifically because the Big Rock investigation is blocked waiting on
-the user's ears (see "In progress" below, unchanged from last update).
+Updated 2026-09-16 (later). Two fixes committed on top of the 2026-09-12
+work below (all local `main`, not pushed to `origin/main` — hold until
+explicitly asked), then an uncommitted batch of audits (code review,
+security review, dependency audits) and a docs-cleanup pass, then the
+user confirmed by ear that Big Rock's tempo is a half-time misread, then
+a drums-stem-based fix was designed, implemented, and tested — then
+proven by direct execution against real audio to NOT actually fix it
+(see "In progress" below for the full story). Per explicit user
+decision, stopped here rather than immediately building the fix that
+would actually work.
 
 ## Done this session (2026-09-16), committed
 
@@ -37,6 +42,87 @@ required, unlike everything else queued in this file.
   had picked up an accidental paste (`cool sounds good t ome` prepended
   to its title line) before this session started. Flagged to the user,
   reverted.
+
+## Also this session (2026-09-16), not committed: audits + docs cleanup
+
+All of this is inspection/verification and doc changes only — no
+production code changed in this half of the session. Not committed yet;
+left for the user to review and commit (or not).
+
+- **Discovery-sweep code review** (`/code-review high`, whole-codebase
+  intent — a previous instance of this same sweep had been killed
+  mid-run in an earlier session, before a `/clear`): came back clean.
+  Traced its two most-suspected candidate concerns out to REFUTED: (a) a
+  possible duplicate `MetronomeMark` when Easy/Medium tiers forward
+  tempo — not an issue, because `to_easy`/`to_medium` call
+  `get_hand_parts` then `quantize_part`/`shift_into_range`, which only
+  copy `part.flatten().notes` + clef into a fresh `Part`, never other
+  stream elements, so `get_tempo()` reading the original +
+  `build_grand_staff_score` re-inserting once is the only tempo mark
+  written (`backend/app/difficulty/quantize.py:20-32`,
+  `backend/app/difficulty/range_shift.py:13-21`); (b) whether moving
+  `ingest()` off the event loop via `run_in_threadpool` was unsafe — it
+  isn't, it's pure synchronous I/O into a per-request unique `dest_dir`,
+  no shared mutable state. Tempo and ingestion-offload tests re-run live,
+  all pass.
+- **Security review** (`security-review` skill) of the same 5-commit
+  diff (tempo-marking + ingestion-offload fixes): no HIGH/MEDIUM
+  findings. Both changes are pure internal numeric computation (tempo
+  forwarding) or a threadpool-execution-context change with unchanged
+  call signatures — no new injection/auth/crypto/data-exposure surface.
+- **Dependency audits**: `npm audit --production` in `frontend/` — 0
+  vulnerabilities. Backend `pip-audit` first hit a local-machine-only
+  snag (see the new "Optional, lower priority" item below for the
+  broken-venv details) but, worked around, came back essentially clean:
+  one hit, `setuptools 80.10.2` → `PYSEC-2026-3447` (fixed in 83.0.0) —
+  checked what it actually is: a macOS-specific Unicode-normalization
+  bug in `setuptools`' sdist-building `MANIFEST.in` exclusion matching,
+  relevant only to *building* a package for distribution (which
+  Synthony doesn't do), not runtime. `requirements.txt` already pins
+  `setuptools<81` deliberately (madmom/resampy need the legacy
+  `pkg_resources` API setuptools 81+ dropped) — informational only, no
+  action taken; upgrading would break the pipeline for no benefit.
+  **Net result of all four checks above: clean code review, clean
+  security review, clean dependency audit (frontend and backend) —
+  nothing left to fix by inspection.**
+- **Docs cleanup**: re-audited all 7 specs and 13 plans in
+  `docs/superpowers/` against the current codebase (not just trusting
+  the 2026-09-12 session's judgment). Deleted one: `docs/superpowers/plans/2026-09-02-phase4-async-job-infra.md`
+  — its entire Task 3 architecture (`generate_lh_variants`,
+  `detect_chords`, `app.arrangement.engine`) was the chord-symbol-driven
+  pipeline retired by the 2026-09-02 LH-true-transcription rewrite; no
+  dangling references to it existed anywhere else in the repo. Kept
+  everything else, including some that looked stale at first glance but
+  turned out to still document real, currently-accurate outcomes under
+  renamed internals (e.g. `2026-09-02-spec2-key-signature.md` and
+  `2026-09-02-spec2-real-tempo.md` both reference a `detect_chords`
+  function that's since been renamed to `detect_key_and_tempo`, but the
+  actual deliverables they describe — key signature and real tempo
+  threaded through Spec 2 — are exactly what's still live in
+  `arrange_pipeline.py` today) or that already self-document their own
+  pivots in place (e.g. `2026-09-12-hand-split-instrumental-fix-design.md`
+  has its own "Post-implementation update" section covering the later
+  per-stem-transcription pivot away from its original DP-split fix).
+- This `RESUME.md` update itself.
+
+## Also this session (2026-09-16), not committed: drums-stem tempo fix (implemented, tested, then disproven)
+
+New production code + tests this time (unlike the audits batch above).
+Full story is in the "In progress: Big Rock tempo investigation" section
+below; summary: `app/tempo/detect.py` gained `has_audible_signal()`,
+`app/arrange_pipeline.py`'s `run_arrange_pipeline` now prefers Demucs's
+`drums` stem over the bass+other harmony mix for beat detection when it
+has real signal (5 new tests, TDD, full suite 278 passed). Verified
+against Big Rock's real cached drums stem before declaring it fixed —
+and it isn't: still reads ~107-109 BPM on the real isolated drums track,
+same as before. Kept anyway (harmless, tested) per user decision; the
+onset-midpoint correction heuristic that would actually fix it is
+designed but not built. Also noticed and fixed in passing: the local
+`backend/.venv` had drifted to `setuptools 84.0.0`, above the
+deliberate `<81` pin in `requirements.txt` (needed for `resampy`'s
+`pkg_resources` import) — broke test collection entirely until
+`pip install "setuptools<81"` restored it. Local venv state only, not a
+commit.
 
 ## Done and merged in the 2026-09-12 session
 
@@ -75,63 +161,76 @@ required, unlike everything else queued in this file.
   above) — modeled after an example project (PikaRAG) the user shared as
   a format/quality-bar reference.
 
-## In progress: Big Rock tempo investigation (spike, not yet a plan)
+## In progress: Big Rock tempo investigation — root cause CONFIRMED, fix not yet designed
 
 User asked to work through the shelved-instrumental backlog in order:
 Big Rock's tempo complaint → the broader instrumental-quality revisit →
-broadening past pop/rock. This is the first of those three, currently
-paused mid-investigation, not yet a plan.
+broadening past pop/rock. This is the first of those three.
 
-**Confirmed by direct execution** (ran the real production code path
-against the real audio — real Demucs stems, real bass+other mix, real
-tempo detection, real instrumental-variant construction — not just read
-the code): **no arrangement Synthony has ever exported carries a tempo
-marking.** Checked directly on Big Rock's real Hard-tier score:
-`score.flatten().getElementsByClass('MetronomeMark')` returns zero
-matches. This is a genuine, universal gap — playback speed is entirely
-up to whatever default the importing software assumes, decoupled from
-whatever tempo was actually detected. For Big Rock specifically, the
-math says a standard 120 BPM MIDI default would render it ~11% *faster*
-than the source (206s vs. 231s), not slower — so this bug is real but
-doesn't cleanly explain the "too slow" complaint's direction by itself.
+**2026-09-16, by-ear confirmation**: user listened to both tempo
+variants (converted to MIDI via `music21` since MusicXML isn't
+GarageBand-importable — `/tmp/bigrock_probe/hard_tempo_detected_111bpm.mid`
+vs. `hard_tempo_doubled_222bpm.mid`) and confirmed **the doubled
+222 BPM version's note-density/backbeat matches the real Big Rock
+recording better than the 111 BPM detected version.** This confirms the
+half-time-misread hypothesis below: both madmom and librosa locked onto
+half Big Rock's true tempo (~215-220 BPM actual vs. ~107-110 BPM
+detected), a known shared failure mode for driving rock backbeats where
+both algorithms' onset-strength-autocorrelation approach can't
+distinguish the true beat from its half-time subdivision.
 
-**Open, unconfirmed hypothesis:** two independent tempo-detection
-algorithms (madmom, librosa) agree tightly at ~107-110 BPM for Big Rock,
-on both the full mix and the real bass+other stem mix the pipeline
-actually uses. Tight agreement is not proof of correctness here — both
-algorithms share the same onset-strength-autocorrelation approach, and a
-"half-time" reading of a driving rock backbeat (true tempo ~215-220 BPM)
-is one of the most common shared failure modes in tempo detection. This
-would make every note render at double the note-value it should, which
-reads/feels sluggish independent of the metronome-mark bug's math. Can't
-confirm or rule out without listening — no audio playback available in
-this session's environment.
+**Root cause confirmed for Big Rock specifically. A fix was designed,
+implemented, tested — and then proven NOT to actually fix it, by direct
+execution against real audio:**
 
-**Next step, waiting on the user:** both tempo-mark variants of Big
-Rock's Hard-tier arrangement are now rendered and ready for a by-ear
-comparison — the actual answer requires listening, so nothing further
-can be prepped without you:
-- `/tmp/bigrock_probe/hard_tempo_detected_111bpm.musicxml` — tempo mark
-  at the detected 111 BPM (recomputed fresh via `detect_beat_map()` on
-  the same real bass+other stem mix the pipeline uses; matches the
-  107-110 BPM range from the original investigation within measurement
-  noise).
-- `/tmp/bigrock_probe/hard_tempo_doubled_222bpm.musicxml` — identical
-  notation (verified byte-for-byte equal apart from the tempo mark
-  itself), tempo mark doubled to 222 BPM.
-- Open both in notation software (e.g. MuseScore) and play back: does
-  222 BPM's doubled note-density/backbeat feel match the real recording
-  better than 111 BPM's? That's the half-time-misread hypothesis, and
-  it can only be settled by ear. Comparing total playback duration
-  against the source doesn't work as a shortcut here — both files'
-  underlying note values were quantized using the same 111 BPM detected
-  beat map in the first place, so the 111 BPM version's wall-clock
-  duration will trivially track the source regardless of whether 111 is
-  actually correct.
+- Brainstormed (bounded path) a fix: run beat detection on Demucs's
+  `drums` stem (already extracted, never previously used anywhere in
+  the codebase) instead of the bass+other harmony mix, on the
+  hypothesis that the harmony mix was an ambiguous signal for beat
+  tracking and drums would be clearer. Implemented via TDD: new
+  `has_audible_signal()` in `app/tempo/detect.py` (cheap RMS gate, 3
+  unit tests) plus routing logic in `run_arrange_pipeline`
+  (`app/arrange_pipeline.py`) preferring `stems.drums` over
+  `harmony_path` when it has real signal (2 more tests). Full suite:
+  278 passed (was 273).
+- **Then ran it against Big Rock's real cached drums stem
+  (`/tmp/bigrock_probe/stems/htdemucs/arrange_instrumental_big_rock/drums.wav`)
+  as a sanity check before declaring victory — and it does NOT fix the
+  misread.** `detect_beat_map()` on the real isolated drums stem still
+  reads ~107-109 BPM, identical to the harmony-mix result. The
+  half-time ambiguity isn't caused by cross-instrument interference in
+  the mix (which drums-only would remove); it's that Big Rock's actual
+  backbeat pattern's strongest hits genuinely sit at the half-time
+  rate, so madmom locks onto that same pulse whether or not other
+  instruments are present. See TAKEAWAYS.md's new "A plausible
+  root-cause hypothesis still needs direct verification" lesson.
+- **Current state, per explicit user decision**: keep the drums-stem
+  routing change (harmless, fully tested, arguably still a reasonable
+  default for other songs even though it didn't help this one) but
+  stop here for now rather than immediately implement the next fix.
+  Changes are uncommitted, staged for the user to review (matching
+  this session's established norm).
+- **Still-needed fix, designed but not implemented**: the
+  onset-midpoint correction heuristic from the original (pre-pivot)
+  brainstorm — for each detected inter-beat interval, check (via a
+  librosa onset-strength envelope) whether there's a comparably strong
+  onset near the midpoint; if a strong majority of intervals show one,
+  conclude a half-time misread and insert beats at those midpoints
+  (snapped to the real local onset peak, not the naive time-midpoint),
+  doubling `beat_times` density. This targets the actual ambiguity
+  directly and doesn't depend on which stem it runs on. Not yet built.
 
-Probe artifacts (real Demucs stems, harmony mix, exported test
-MusicXML, and the two tempo-variant exports above) are in
-`/tmp/bigrock_probe/` — outside the repo, scratch/throwaway, not
+**Both original hypotheses are now resolved** (superseding the
+"Open, unconfirmed hypothesis"/"Next step, waiting on the user" text
+this section used to have): (1) the missing-tempo-marking bug — fixed
+and committed, confirmed via direct execution that no export ever
+carried a `MetronomeMark`; (2) the half-time-misread hypothesis —
+confirmed by ear on 2026-09-16 (see above): a doubled-BPM (222)
+render's note-density/backbeat matches the real recording better than
+the detected-BPM (111) render. The drums-stem fix attempt and its
+disproof are detailed above. `/tmp/bigrock_probe/` still holds all
+probe artifacts (real Demucs stems, harmony mix, both tempo-variant
+MusicXML/MIDI exports) — outside the repo, scratch/throwaway, not
 committed, safe to regenerate or delete.
 
 ## Next up after Big Rock resolves
@@ -149,10 +248,65 @@ committed, safe to regenerate or delete.
   Demucs's catch-all "other" stem (no known fix), further LH
   onset-cleanup (nothing currently prompting it).
 
+## Queued: 2026-09-16 portfolio-review Improvement Backlog (not started, not yet saved as a doc)
+
+User pasted a "Synthony Improvement Backlog" (from a 2026-09-16 portfolio
+review) into this session. Explicitly deprioritized behind Big Rock —
+user said "finish Big Rock first" when asked which to tackle. **Exists
+only in this session's chat history right now, not saved to any file**
+(offered to save it as a spec/backlog doc; not yet answered). Priority
+order from that doc, highest first:
+
+- **Priority 2a — ground-truth transcription accuracy eval**: the
+  existing quality harness (`backend/scripts/quality_harness/`) only
+  diffs metrics run-over-run, never checks correctness against a known
+  answer. Plan: pull a handful of MAESTRO dataset clips (piano + ground
+  truth MIDI — the same corpus `piano_transcription_inference` was
+  trained on), run them through the Spec 1 solo-piano pipeline, compute
+  real note-level precision/recall/F1 (onset + pitch) against ground
+  truth.
+- **Priority 2b — validate difficulty tiers against real human
+  judgment**: the difficulty engine (`app/difficulty/easy.py` /
+  `medium.py` / `hard.py`) is pure rule-based, no check against how
+  people actually rate playability. Depends on 2a existing first;
+  collect real (even self-rated) sight-readability judgments and check
+  whether the rule-based tiers track perceived difficulty.
+- **Priority 3a — automatic quality proxy for the "listening pass"**:
+  the quality harness's own docstring admits a human still has to
+  listen to judge real quality. Consider a lightweight automatic proxy
+  (pitch/rhythm plausibility scorer, or a classifier for obviously bad
+  arrangements) to cut down how often a human has to listen, not
+  replace it.
+- **Priority 3b — frontend test suite**: frontend correctness is
+  currently verified manually in a browser only (per the README). Even
+  a thin Vitest + React Testing Library layer on `DifficultyTabs`,
+  `UploadForm`, `ScoreViewer` would close this gap.
+- **Priority 4 (explicitly optional/lowest)** — extend key/tempo
+  detection past the current fixed-4/4-time-signature assumption
+  (documented limitation, not a bug).
+
 ## Optional, lower priority
 
-Checked 2026-09-16: this queue is now empty. Both previously-carried
-items are resolved:
+One real item, newly found this session — everything previously carried
+here is resolved (see below):
+
+- **Broken local backend venv**: `backend/.venv`'s `activate` script and
+  nearly every installed console-script (`pip`, `pytest`, `uvicorn`,
+  `fastapi`, `demucs`, `yt-dlp`, etc.) have shebangs/paths hardcoded to
+  `.venv-py311`, a directory that no longer exists on this machine — the
+  venv was apparently created at that name originally, then renamed to
+  `.venv` without regenerating its scripts. Effect: `source
+  .venv/bin/activate` silently fails to put the real venv on `PATH` and
+  falls back to base Anaconda instead. Confirmed local-only, gitignored
+  machine state (`.gitignore` line 4 covers `.venv`; no CI workflow
+  references `setup.sh` or this venv) — nothing to fix via a commit.
+  Fix is a multi-minute `bash backend/setup.sh` rebuild (re-clones/builds
+  `madmom`, reinstalls `demucs`/`torch`/etc.); declined to run it
+  unprompted given the time/bandwidth cost, offered to the user, not yet
+  answered.
+
+Checked 2026-09-16 (earlier in the day): this queue was empty before the
+above. Both previously-carried items are resolved:
 
 - The ingestion event-loop item — fixed this session (see above).
 - The "handful of Minor findings parked" from the production-readiness
@@ -186,3 +340,5 @@ items are resolved:
   in-chat design instead, per its own header).
 - `docs/superpowers/specs/2026-09-12-hand-split-instrumental-fix-design.md`
   — the stem-split pivot Big Rock's investigation builds on.
+- This file's "Queued: 2026-09-16 portfolio-review Improvement Backlog"
+  section above — the only place that backlog is recorded right now.
