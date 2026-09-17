@@ -41,6 +41,15 @@ MAX_TEMPO_BPM = 200.0
 # function). 100 fps is madmom's own documented default/recommended value.
 _MADMOM_FPS = 100
 
+# RMS floor (on librosa's [-1, 1]-normalized samples) below which a clip is
+# treated as near-silent/noise-floor-only rather than carrying real signal --
+# e.g. a Demucs drums stem separated from a song with no percussion, which
+# can still contain faint bleed-through of other instruments rather than
+# true digital silence. Picked to sit well below any audibly-present source
+# (a plain -20 dBFS tone has RMS ~0.07) while still comfortably above
+# separation-artifact noise floors (~0.0005 RMS in practice).
+_MIN_AUDIBLE_RMS = 0.01
+
 
 class BeatMap:
     """Piecewise-linear mapping from audio seconds to quarterLength (beats),
@@ -229,6 +238,21 @@ def _librosa_fallback_beat_map(audio_path: str) -> BeatMap:
         return BeatMap.constant(DEFAULT_SECONDS_PER_QUARTER)
     bpm = min(max(bpm, MIN_TEMPO_BPM), MAX_TEMPO_BPM)
     return BeatMap.constant(60.0 / bpm)
+
+
+def has_audible_signal(audio_path: str) -> bool:
+    """Cheap gate for whether audio_path carries enough real signal to
+    trust for beat detection, vs. near-silent/noise-floor-only content
+    (e.g. a Demucs drums stem for a song with no percussion). Deliberately
+    a plain RMS check rather than running madmom -- fast enough to call
+    speculatively even on a stem we may end up not using."""
+    try:
+        y, _sr = librosa.load(audio_path, sr=None, mono=True)
+    except Exception:
+        return False
+    if y.size == 0:
+        return False
+    return bool(np.sqrt(np.mean(np.square(y))) >= _MIN_AUDIBLE_RMS)
 
 
 def detect_beat_map(audio_path: str) -> BeatMap:

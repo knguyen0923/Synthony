@@ -7,7 +7,7 @@ import pretty_midi
 import pytest
 from scipy.io import wavfile
 
-from app.tempo.detect import BeatMap, detect_beat_map
+from app.tempo.detect import BeatMap, detect_beat_map, has_audible_signal
 
 _FLUIDSYNTH_SOUNDFONT = Path(pretty_midi.__file__).parent / "TimGM6mb.sf2"
 
@@ -235,3 +235,43 @@ def test_detect_beat_map_falls_back_on_extremely_short_clip(tmp_path):
 
     assert beat_map.to_quarter_length(0.03) > beat_map.to_quarter_length(0.0)
     assert math.isfinite(beat_map.bpm_at(0.02))
+
+
+# ---------------------------------------------------------------------------
+# has_audible_signal: cheap RMS-based gate used to decide whether a Demucs
+# stem (e.g. drums) carries enough real signal to trust for beat detection,
+# vs. near-silent/noise-floor-only content (e.g. a drums stem for a song
+# with no percussion).
+# ---------------------------------------------------------------------------
+
+
+def test_has_audible_signal_false_on_silence(tmp_path):
+    sr = 22050
+    y = np.zeros(int(sr * 2.0), dtype=np.int16)
+    wav_path = tmp_path / "silence.wav"
+    wavfile.write(str(wav_path), sr, y)
+
+    assert has_audible_signal(str(wav_path)) is False
+
+
+def test_has_audible_signal_true_on_tone(tmp_path):
+    sr = 22050
+    duration = 2.0
+    t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+    y = (0.5 * np.sin(2 * np.pi * 220.0 * t) * 32767).astype(np.int16)
+    wav_path = tmp_path / "tone.wav"
+    wavfile.write(str(wav_path), sr, y)
+
+    assert has_audible_signal(str(wav_path)) is True
+
+
+def test_has_audible_signal_false_on_faint_noise_floor(tmp_path):
+    """Simulates Demucs bleed-through into a stem with no real source
+    content: quiet, not exactly zero, but far below any audible level."""
+    sr = 22050
+    rng = np.random.default_rng(0)
+    y = (rng.normal(scale=0.0005, size=int(sr * 2.0)) * 32767).astype(np.int16)
+    wav_path = tmp_path / "noise_floor.wav"
+    wavfile.write(str(wav_path), sr, y)
+
+    assert has_audible_signal(str(wav_path)) is False

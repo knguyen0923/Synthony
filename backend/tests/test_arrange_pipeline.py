@@ -243,6 +243,94 @@ def test_run_arrange_pipeline_deletes_the_stems_directory_after_success(tmp_path
     assert (tmp_path / "hard.musicxml").exists()
 
 
+def _write_tone_wav(path, sample_rate=22050, duration=0.5, freq=220.0):
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    y = (0.5 * np.sin(2 * np.pi * freq * t) * 32767).astype(np.int16)
+    wavfile.write(str(path), sample_rate, y)
+
+
+def _write_silence_wav(path, sample_rate=22050, duration=0.5):
+    y = np.zeros(int(sample_rate * duration), dtype=np.int16)
+    wavfile.write(str(path), sample_rate, y)
+
+
+def _setup_pipeline_common_mocks(pipeline_module, monkeypatch, stems):
+    fake_notes = [NoteEvent(start=float(i), end=float(i) + 0.5, pitch=72) for i in range(10)]
+    fake_lh_notes = [NoteEvent(start=0.0, end=0.5, pitch=48)]
+    monkeypatch.setattr(pipeline_module, "separate_stems", lambda audio_path, output_dir: stems)
+    monkeypatch.setattr(pipeline_module, "mix_wav_files", lambda a, b, dest: dest)
+    monkeypatch.setattr(pipeline_module, "extract_melody_notes", lambda audio_path: fake_notes)
+    monkeypatch.setattr(pipeline_module, "extract_lh_notes", lambda audio_path: fake_lh_notes)
+    monkeypatch.setattr(pipeline_module, "detect_key_and_tempo", lambda audio_path: ((0, "major"), 0.5))
+
+
+def test_run_arrange_pipeline_prefers_the_drums_stem_for_beat_detection_when_audible(tmp_path, monkeypatch):
+    """The drums stem carries a far less ambiguous beat signal than the
+    bass+other harmony mix (confirmed: madmom/librosa misread driving
+    backbeat material as half-time on the harmony mix). When Demucs's
+    drums stem has real signal, it must be what beat detection runs on."""
+    import app.arrange_pipeline as pipeline_module
+
+    (tmp_path / "stems").mkdir()
+    drums_path = tmp_path / "stems" / "drums.wav"
+    _write_tone_wav(drums_path)
+    stems = Stems(
+        vocals=tmp_path / "stems" / "vocals.wav", drums=drums_path,
+        bass=tmp_path / "stems" / "bass.wav", other=tmp_path / "stems" / "other.wav",
+    )
+    _setup_pipeline_common_mocks(pipeline_module, monkeypatch, stems)
+
+    calls = []
+    monkeypatch.setattr(
+        pipeline_module, "detect_beat_map",
+        lambda audio_path: calls.append(audio_path) or BeatMap.constant(0.5),
+    )
+
+    job_id = create_job()
+    run_arrange_pipeline(
+        job_id=job_id, audio_path="fake.wav", title="Song",
+        source_type="upload", source_url=None, song_id="fake-song-id",
+        dest_dir=tmp_path,
+    )
+
+    assert get_job(job_id).status == "done"
+    assert calls == [str(drums_path)]
+
+
+def test_run_arrange_pipeline_falls_back_to_harmony_when_drums_stem_is_silent(tmp_path, monkeypatch):
+    """A drums stem that's near-silent (e.g. a song with no percussion --
+    Demucs still produces a drums.wav, just noise-floor/bleed-through)
+    must not be trusted for beat detection; fall back to the existing
+    bass+other harmony mix, matching pre-fix behavior."""
+    import app.arrange_pipeline as pipeline_module
+
+    (tmp_path / "stems").mkdir()
+    drums_path = tmp_path / "stems" / "drums.wav"
+    _write_silence_wav(drums_path)
+    stems = Stems(
+        vocals=tmp_path / "stems" / "vocals.wav", drums=drums_path,
+        bass=tmp_path / "stems" / "bass.wav", other=tmp_path / "stems" / "other.wav",
+    )
+    _setup_pipeline_common_mocks(pipeline_module, monkeypatch, stems)
+
+    calls = []
+    monkeypatch.setattr(
+        pipeline_module, "detect_beat_map",
+        lambda audio_path: calls.append(audio_path) or BeatMap.constant(0.5),
+    )
+
+    job_id = create_job()
+    run_arrange_pipeline(
+        job_id=job_id, audio_path="fake.wav", title="Song",
+        source_type="upload", source_url=None, song_id="fake-song-id",
+        dest_dir=tmp_path,
+    )
+
+    assert get_job(job_id).status == "done"
+    harmony_path = tmp_path / "stems" / "harmony.wav"
+    assert calls == [str(harmony_path)]
+
+
 def test_run_arrange_pipeline_deletes_the_whole_dest_dir_on_failure(tmp_path, monkeypatch):
     """Mirrors the success-path stems-cleanup test above: run_arrange_
     pipeline's except blocks already delete the ENTIRE dest_dir (not just

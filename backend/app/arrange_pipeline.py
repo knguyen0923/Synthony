@@ -26,7 +26,7 @@ from app.notation.hand_split import (
 from app.notation.voice_cap import cap_simultaneous_notes
 from app.separation.separator import separate_stems
 from app.storage import evict_oldest_songs, write_metadata
-from app.tempo.detect import BeatMap, detect_beat_map
+from app.tempo.detect import BeatMap, detect_beat_map, has_audible_signal
 from app.transcription.audio_to_midi import transcribe_audio_to_notes
 
 logger = logging.getLogger(__name__)
@@ -187,7 +187,18 @@ def run_arrange_pipeline(
             set_status(job_id, "detecting_key")
             harmony_path = mix_wav_files(stems.bass, stems.other, dest_dir / "stems" / "harmony.wav")
             detected_key, seconds_per_quarter = detect_key_and_tempo(str(harmony_path))
-            beat_map = detect_beat_map(str(harmony_path))
+            # The drums stem carries a far less ambiguous beat signal than
+            # the bass+other harmony mix -- madmom/librosa tempo detection
+            # on driving-backbeat material (e.g. rock) can misread the
+            # harmony mix as half-time, but Demucs already separates a
+            # drums stem we'd otherwise throw away. Fall back to the
+            # harmony mix (pre-fix behavior) when drums is near-silent
+            # (e.g. a song with no percussion).
+            beat_map = (
+                detect_beat_map(str(stems.drums))
+                if has_audible_signal(str(stems.drums))
+                else detect_beat_map(str(harmony_path))
+            )
 
             set_status(job_id, "arranging")
             if _is_instrumental(melody_notes):
