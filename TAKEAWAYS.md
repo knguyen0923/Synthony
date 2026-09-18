@@ -3,7 +3,7 @@
 A retrospective on building Synthony: an app that turns audio — a file
 upload, a YouTube link, a Spotify link, or a QR-scanned link — into
 practice-ready piano sheet music at three difficulty tiers. Built solo,
-2026-08-31 to 2026-09-12 (167 commits, 6 active build days), from empty
+2026-08-31 to 2026-09-16 (193 commits, 7 active build days), from empty
 repo to two working end-to-end transcription pipelines, a real-audio
 verification harness, CI, structured logging, a concurrency guardrail, a
 Docker local-run story, a discovery-sweep bug-fix pass, and a
@@ -89,10 +89,10 @@ there.
 
 ## By the numbers
 
-- **167 commits**, empty repo to two complete pipelines plus a hardening
-  pass, a discovery-sweep bug-fix pass, a production-readiness pass, and a
-  follow-up event-loop-blocking fix, across 6 active build days spanning
-  2026-08-31 to 2026-09-12
+- **193 commits**, empty repo to two complete pipelines plus a hardening
+  pass, a discovery-sweep bug-fix pass, a production-readiness pass, and
+  the entire 2026-09-16 portfolio-review backlog, across 7 active build
+  days spanning 2026-08-31 to 2026-09-16
 - **285 automated backend tests** (plus a separate frontend Vitest suite),
   4,339 lines of backend test code vs. 2,556 lines of backend source
   (more test code than implementation — a deliberate TDD habit, not an
